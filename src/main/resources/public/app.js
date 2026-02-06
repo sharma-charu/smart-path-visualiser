@@ -94,19 +94,6 @@ async function fetchRoads() {
             return;
         }
 
-        // Draw only first 1000 roads to prevent rendering lag if dataset is huge
-        const roadsToDraw = roads.slice(0, 1000);
-
-        // We need node coordinates to draw roads. 
-        // Since we don't fetch all nodes, we might need a way to get coords for drawn roads.
-        // For now, we rely on the Map (nodes) being populated eventually or just accept lines might not draw 
-        // if nodes aren't known. 
-        // FIX: The /roads endpoint should probably return coords, or we just rely on searching.
-        // For visualization sake, let's skip drawing all roads on startup if it's too heavy,
-        // OR we fetch a "skeleton" of main roads.
-        // For this version: We will skip drawing ALL roads to improve performance,
-        // or we only populate the dropdowns.
-
         roads.forEach(road => {
             const label = `Road ${road.roadId}: ${road.fromNode} → ${road.toNode}`;
             reportSelect.add(new Option(label, road.roadId));
@@ -129,7 +116,7 @@ async function handleAutocomplete(type) {
     const suggestionsDiv = document.getElementById(type + '-suggestions');
     const query = input.value.trim();
 
-    if (query.length < 2) {
+    if (query.length < 1) {
         suggestionsDiv.classList.add('hidden');
         return;
     }
@@ -139,18 +126,25 @@ async function handleAutocomplete(type) {
 
     searchTimeout = setTimeout(async () => {
         try {
-            suggestionsDiv.innerHTML = `<div class="p-2 text-gray-500 text-xs">Searching...</div>`;
+            suggestionsDiv.innerHTML = `<div class="p-3 text-gray-500 dark:text-gray-400 text-sm flex items-center gap-2">
+                <span class="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                Searching...
+            </div>`;
             suggestionsDiv.classList.remove('hidden');
 
             const res = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
             const results = await res.json();
 
-            if (results.length === 0) {
-                suggestionsDiv.innerHTML = `<div class="autocomplete-item text-gray-500 text-xs">No matches found</div>`;
+            if (!results || results.length === 0) {
+                suggestionsDiv.innerHTML = `
+                    <div class="p-3 text-center">
+                        <div class="text-gray-500 dark:text-gray-400 text-sm">No matches found for "${query}"</div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Try typing a node ID or number</div>
+                    </div>`;
                 return;
             }
 
-            // Build suggestions
+            // Build suggestions with improved UI
             suggestionsDiv.innerHTML = results.map((node, idx) => {
                 // Cache node data for map plotting
                 nodes[node.nodeId] = {
@@ -163,19 +157,36 @@ async function handleAutocomplete(type) {
                 <div class="autocomplete-item ${idx === selectedIndex ? 'selected' : ''}"
                      onclick="selectNode('${type}', '${node.nodeId}')"
                      data-index="${idx}">
-                    <div class="font-medium">${highlightMatch(node.nodeId, query)}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">${node.latitude.toFixed(4)}, ${node.longitude.toFixed(4)}</div>
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary" style="font-size: 18px">location_on</span>
+                        <div class="flex-1">
+                            <div class="font-semibold text-sm">${highlightMatch(node.nodeId, query)}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">${node.latitude.toFixed(5)}, ${node.longitude.toFixed(5)}</div>
+                        </div>
+                    </div>
                 </div>
             `}).join('');
 
+            // Add result count footer
+            suggestionsDiv.innerHTML += `
+                <div class="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                    ${results.length} result${results.length !== 1 ? 's' : ''} found
+                </div>
+            `;
+
         } catch (e) {
             console.error("Search failed", e);
-            suggestionsDiv.innerHTML = `<div class="p-2 text-red-500 text-xs">Search error</div>`;
+            suggestionsDiv.innerHTML = `
+                <div class="p-3 text-center">
+                    <div class="text-red-500 text-sm">⚠️ Search error</div>
+                    <div class="text-xs text-gray-500 mt-1">${e.message}</div>
+                </div>`;
         }
     }, 300); // 300ms debounce
 }
 
 function highlightMatch(text, query) {
+    if (!query) return text;
     const index = text.toLowerCase().indexOf(query.toLowerCase());
     if (index === -1) return text;
 
@@ -183,7 +194,7 @@ function highlightMatch(text, query) {
     const match = text.substring(index, index + query.length);
     const after = text.substring(index + query.length);
 
-    return `${before}<strong class="text-primary">${match}</strong>${after}`;
+    return `${before}<strong class="text-primary font-bold">${match}</strong>${after}`;
 }
 
 function selectNode(type, nodeId) {
@@ -193,11 +204,16 @@ function selectNode(type, nodeId) {
     // Add marker to map
     if (nodes[nodeId]) {
         const n = nodes[nodeId];
-        L.marker(n.coords, { icon: nodeIcon })
-            .addTo(map)
-            .bindPopup(`<b>${nodeId}</b>`)
-            .openPopup();
+        const marker = L.marker(n.coords, {
+            icon: L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style='background-color:${type === 'source' ? '#10b981' : '#ef4444'}; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);'></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            })
+        }).addTo(map);
 
+        marker.bindPopup(`<b>${type === 'source' ? 'Origin' : 'Destination'}</b><br>${nodeId}`).openPopup();
         map.setView(n.coords, 14);
     }
 
@@ -218,14 +234,22 @@ async function findAllPaths() {
         return;
     }
 
+    if (source === dest) {
+        alert("Origin and destination must be different.");
+        return;
+    }
+
     // Clear existing paths
     pathLayers.forEach(layer => map.removeLayer(layer));
     pathLayers = [];
     currentPaths = [];
 
     const btn = document.querySelector('button[onclick="findAllPaths()"]');
-    const originalText = btn.textContent;
-    btn.textContent = "Calculating...";
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = `
+        <span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
+        Calculating...
+    `;
     btn.disabled = true;
     btn.classList.add('opacity-75');
 
@@ -257,7 +281,7 @@ async function findAllPaths() {
         console.error("Path finding failed", e);
         alert("Error finding paths. Please try again.");
     } finally {
-        btn.textContent = originalText;
+        btn.innerHTML = originalHTML;
         btn.disabled = false;
         btn.classList.remove('opacity-75');
     }
@@ -347,7 +371,7 @@ function showPathDetails(pathData, pathIdx) {
 
             <div>
                 <div class="text-sm font-bold mb-2 text-gray-700 dark:text-gray-300">Route Breakdown</div>
-                <div class="space-y-2">
+                <div class="space-y-2 max-h-64 overflow-y-auto">
                     ${pathData.path.map((node, i) => {
         if (i === pathData.path.length - 1) return '';
         return `
@@ -363,7 +387,6 @@ function showPathDetails(pathData, pathIdx) {
             <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
                 <div class="text-xs text-gray-500 dark:text-gray-400">
                     <p><strong>Path Type:</strong> ${pathData.type === 'optimal' ? 'Optimal (Dijkstra)' : 'Alternative'}</p>
-                    <p class="mt-2"><strong>Nodes:</strong> ${pathData.path.join(' → ')}</p>
                 </div>
             </div>
         </div>
@@ -382,14 +405,18 @@ function showPathDetails(pathData, pathIdx) {
         }
     });
 }
-// Existing modal and closing functions...
+
 function closePathDetails() {
     document.getElementById('pathDetails').classList.add('hidden');
+
+    // Reset all paths to normal style
     pathLayers.forEach((layer, idx) => {
         const colorInfo = pathColors[idx];
         layer.setStyle({ weight: colorInfo.weight, opacity: 0.8 });
     });
 }
+
+// Modal Logic
 function openReportModal() {
     document.getElementById('reportModal').style.display = 'flex';
 }
@@ -402,4 +429,49 @@ function openReviewModal() {
 function closeReviewModal() {
     document.getElementById('reviewModal').style.display = 'none';
 }
-// ... submission functions identical to previous
+
+// Submissions
+async function submitComplaint() {
+    const roadId = document.getElementById('reportRoadSelect').value;
+    const type = document.getElementById('reportType').value;
+    const desc = document.getElementById('reportDesc').value;
+
+    try {
+        await fetch('/complaints', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                road_id: parseFloat(roadId),
+                complaint_type: type,
+                description: desc,
+                user_name: "WebUser"
+            })
+        });
+        alert("✅ Complaint Submitted! Road metrics updated.");
+        closeReportModal();
+    } catch (e) {
+        alert("❌ Failed to submit complaint.");
+    }
+}
+
+async function submitReview() {
+    const roadId = document.getElementById('reviewRoadSelect').value;
+    const rating = document.getElementById('reviewRating').value;
+    const comment = document.getElementById('reviewComment').value;
+
+    try {
+        await fetch('/reviews', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                road_id: parseFloat(roadId),
+                rating: parseFloat(rating),
+                comment: comment
+            })
+        });
+        alert("✅ Review Submitted! Road safety score updated.");
+        closeReviewModal();
+    } catch (e) {
+        alert("❌ Failed to submit review.");
+    }
+}

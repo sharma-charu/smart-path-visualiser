@@ -34,10 +34,11 @@ public class NodeService {
         return list;
     }
     
+    
     public static List<Node> searchNodes(String query) {
         List<Node> list = new ArrayList<>();
-        // Efficient SQL search with limit
-        String sql = "SELECT * FROM nodes WHERE node_id LIKE ? LIMIT 20";
+        // Case-insensitive SQL search with limit
+        String sql = "SELECT * FROM nodes WHERE UPPER(node_id) LIKE UPPER(?) LIMIT 20";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
