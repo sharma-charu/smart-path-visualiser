@@ -62,15 +62,12 @@ CREATE TABLE IF NOT EXISTS reviews (
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
--- Initial Mock Data (Optional, for testing)
-INSERT INTO nodes (node_id, latitude, longitude) VALUES ('A', 23.2599, 77.4126) ON CONFLICT DO NOTHING;
-INSERT INTO nodes (node_id, latitude, longitude) VALUES ('B', 23.2605, 77.4200) ON CONFLICT DO NOTHING;
-INSERT INTO nodes (node_id, latitude, longitude) VALUES ('C', 23.2550, 77.4250) ON CONFLICT DO NOTHING;
+-- NOTE: OSMSeeder automatically populates nodes and roads from OpenStreetMap
+-- For manual testing without OSM, uncomment the following lines:
 
-INSERT INTO roads (from_node, to_node, distance) VALUES ('A', 'B', 3.0);
-INSERT INTO roads (from_node, to_node, distance) VALUES ('B', 'C', 5.0);
-INSERT INTO roads (from_node, to_node, distance) VALUES ('A', 'C', 9.0);
-
--- Initialize metrics for the inserted roads (assuming IDs 1, 2, 3)
--- This might need adjustment if IDs are not 1, 2, 3 but for a fresh DB it is likely.
--- Better to handle metric initialization in code or trigger, but manual for now is fine.
+-- INSERT INTO nodes (node_id, latitude, longitude) VALUES ('A', 23.2599, 77.4126) ON CONFLICT DO NOTHING;
+-- INSERT INTO nodes (node_id, latitude, longitude) VALUES ('B', 23.2605, 77.4200) ON CONFLICT DO NOTHING;
+-- INSERT INTO nodes (node_id, latitude, longitude) VALUES ('C', 23.2550, 77.4250) ON CONFLICT DO NOTHING;
+-- INSERT INTO roads (from_node, to_node, distance) VALUES ('A', 'B', 3.0);
+-- INSERT INTO roads (from_node, to_node, distance) VALUES ('B', 'C', 5.0);
+-- INSERT INTO roads (from_node, to_node, distance) VALUES ('A', 'C', 9.0);

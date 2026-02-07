@@ -15,6 +15,7 @@ public class MetaRoutes {
     public static void register() {
         get("/nodes", handleGetNodes);
         get("/roads", handleGetRoads);
+        get("/search/nodes", handleSearchNodes);
     }
 
     private static Route handleGetNodes = (Request req, Response res) -> {
@@ -25,5 +26,14 @@ public class MetaRoutes {
     private static Route handleGetRoads = (Request req, Response res) -> {
         res.type("application/json");
         return gson.toJson(RoadService.getAllRoads());
+    };
+    
+    private static Route handleSearchNodes = (Request req, Response res) -> {
+        res.type("application/json");
+        String query = req.queryParams("q");
+        if (query == null || query.isEmpty()) {
+            return "[]";
+        }
+        return gson.toJson(NodeService.searchNodes(query));
     };
 }
