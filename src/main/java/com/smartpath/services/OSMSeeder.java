@@ -86,6 +86,7 @@ public class OSMSeeder {
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            conn.setRequestProperty("User-Agent", "SmartPathVisualiser/1.0 (student-project)");
             conn.setConnectTimeout(30000);
             conn.setReadTimeout(60000);
             
@@ -265,7 +266,10 @@ public class OSMSeeder {
                 "INSERT OR IGNORE INTO nodes VALUES ('HABIBGANJ', 23.2280, 77.4386)",
                 "INSERT OR IGNORE INTO nodes VALUES ('BHOPAL_JN', 23.2699, 77.4120)",
                 "INSERT OR IGNORE INTO nodes VALUES ('ARERA_COLONY', 23.2156, 77.4304)",
-                "INSERT OR IGNORE INTO nodes VALUES ('SHAHPURA', 23.1958, 77.4586)"
+                "INSERT OR IGNORE INTO nodes VALUES ('SHAHPURA', 23.1958, 77.4586)",
+                "INSERT OR IGNORE INTO nodes VALUES ('Indore', 22.7196, 75.8577)",
+                "INSERT OR IGNORE INTO nodes VALUES ('Pune', 18.5204, 73.8567)",
+                "INSERT OR IGNORE INTO nodes VALUES ('Dhule', 20.9042, 74.7749)"
             };
             
             PreparedStatement stmt = conn.createStatement() instanceof PreparedStatement ? 
@@ -287,7 +291,10 @@ public class OSMSeeder {
                 "INSERT INTO roads (from_node, to_node, distance) VALUES ('MP_NAGAR', 'HABIBGANJ', 2.8)",
                 "INSERT INTO roads (from_node, to_node, distance) VALUES ('TT_NAGAR', 'ARERA_COLONY', 3.5)",
                 "INSERT INTO roads (from_node, to_node, distance) VALUES ('ARERA_COLONY', 'SHAHPURA', 4.2)",
-                "INSERT INTO roads (from_node, to_node, distance) VALUES ('HABIBGANJ', 'KOLAR_ROAD', 5.8)"
+                "INSERT INTO roads (from_node, to_node, distance) VALUES ('HABIBGANJ', 'KOLAR_ROAD', 5.8)",
+                "INSERT INTO roads (from_node, to_node, distance) VALUES ('Indore', 'Dhule', 255.4)",
+                "INSERT INTO roads (from_node, to_node, distance) VALUES ('Dhule', 'Pune', 337.8)",
+                "INSERT INTO roads (from_node, to_node, distance) VALUES ('Indore', 'Pune', 593.2)"
             };
             
             for (String sql : roadSql) {

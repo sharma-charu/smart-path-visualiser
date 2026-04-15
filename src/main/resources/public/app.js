@@ -17,6 +17,10 @@ let selectedDest = null;
 let currentPaths = [];
 let isLoading = true;
 
+// Track markers so we can remove them when they change
+let sourceMarker = null;
+let destMarker = null;
+
 // Autocomplete state
 let selectedIndex = -1;
 
@@ -43,6 +47,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     showLoading(true);
     await fetchRoads();
     showLoading(false);
+
+    // Allow user to click on the map to select origin and destination
+    map.on('click', async (e) => {
+        if (isLoading) return;
+
+        const sourceInput = document.getElementById('sourceInput');
+        const destInput = document.getElementById('destInput');
+
+        let type = 'source';
+        if (sourceInput.value && !destInput.value) {
+            type = 'dest';
+        } else if (sourceInput.value && destInput.value) {
+            // Both are filled, clear and start over with source
+            sourceInput.value = '';
+            destInput.value = '';
+            if (sourceMarker) { map.removeLayer(sourceMarker); sourceMarker = null; }
+            if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+            pathLayers.forEach(layer => map.removeLayer(layer));
+            pathLayers = [];
+            currentPaths = [];
+            document.getElementById('routeList').innerHTML = '';
+            document.getElementById('routeSummary').classList.add('hidden');
+            closePathDetails();
+            type = 'source';
+        }
+
+        const lat = e.latlng.lat;
+        const lon = e.latlng.lng;
+
+        // Show temporary marker while loading
+        const tempId = `Loading...`;
+        sourceInput.placeholder = type === 'source' ? 'Fetching location...' : 'Search for origin...';
+        destInput.placeholder = type === 'dest' ? 'Fetching location...' : 'Search for destination...';
+
+        try {
+            // Reverse geocode to get a readable name
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&email=contact@smartpath.com`);
+            const data = await res.json();
+            const displayName = data.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+            const cacheId = displayName;
+
+            nodes[cacheId] = {
+                lat: lat,
+                lon: lon,
+                coords: [lat, lon],
+                fullName: displayName
+            };
+
+            selectNode(type, cacheId);
+        } catch (err) {
+            console.error("Reverse geocode failed", err);
+            const fallbackId = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            nodes[fallbackId] = {
+                lat: lat,
+                lon: lon,
+                coords: [lat, lon],
+                fullName: fallbackId
+            };
+            selectNode(type, fallbackId);
+        } finally {
+            sourceInput.placeholder = 'Search for origin...';
+            destInput.placeholder = 'Search for destination...';
+        }
+    });
 
     // Close autocomplete when clicking outside
     document.addEventListener('click', (e) => {
@@ -132,36 +200,57 @@ async function handleAutocomplete(type) {
             </div>`;
             suggestionsDiv.classList.remove('hidden');
 
-            const res = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
-            const results = await res.json();
+            // Try Nominatim API first for real-world places
+            let res;
+            let results = [];
+            try {
+                res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=5&countrycodes=in&email=contact@smartpath.com`);
+                results = await res.json();
+            } catch (e) {
+                console.warn("Nominatim failed, falling back to local nodes", e);
+                res = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
+                results = await res.json();
+            }
 
             if (!results || results.length === 0) {
-                suggestionsDiv.innerHTML = `
-                    <div class="p-3 text-center">
-                        <div class="text-gray-500 dark:text-gray-400 text-sm">No matches found for "${query}"</div>
-                        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Try typing a node ID or number</div>
-                    </div>`;
-                return;
+                // Fallback to local nodes API if Nominatim returns nothing
+                res = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
+                results = await res.json();
+
+                if (!results || results.length === 0) {
+                    suggestionsDiv.innerHTML = `
+                        <div class="p-3 text-center">
+                            <div class="text-gray-500 dark:text-gray-400 text-sm">No matches found for "${query}"</div>
+                            <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Try typing a node ID or number</div>
+                        </div>`;
+                    return;
+                }
             }
 
             // Build suggestions with improved UI
             suggestionsDiv.innerHTML = results.map((node, idx) => {
+                const displayName = node.display_name || node.nodeId || "Unknown Place";
+                const lat = parseFloat(node.lat || node.latitude);
+                const lon = parseFloat(node.lon || node.longitude);
+
                 // Cache node data for map plotting
-                nodes[node.nodeId] = {
-                    lat: node.latitude,
-                    lon: node.longitude,
-                    coords: [node.latitude, node.longitude]
+                const cacheId = displayName;
+                nodes[cacheId] = {
+                    lat: lat,
+                    lon: lon,
+                    coords: [lat, lon],
+                    fullName: displayName
                 };
 
                 return `
                 <div class="autocomplete-item ${idx === selectedIndex ? 'selected' : ''}"
-                     onclick="selectNode('${type}', '${node.nodeId}')"
+                     onclick="selectNode('${type}', '${cacheId.replace(/'/g, "\\'")}')"
                      data-index="${idx}">
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary" style="font-size: 18px">location_on</span>
                         <div class="flex-1">
-                            <div class="font-semibold text-sm">${highlightMatch(node.nodeId, query)}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400">${node.latitude.toFixed(5)}, ${node.longitude.toFixed(5)}</div>
+                            <div class="font-semibold text-sm">${highlightMatch(displayName, query)}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
                         </div>
                     </div>
                 </div>
@@ -204,6 +293,11 @@ function selectNode(type, nodeId) {
     // Add marker to map
     if (nodes[nodeId]) {
         const n = nodes[nodeId];
+
+        // Remove existing marker for this type
+        if (type === 'source' && sourceMarker) map.removeLayer(sourceMarker);
+        if (type === 'dest' && destMarker) map.removeLayer(destMarker);
+
         const marker = L.marker(n.coords, {
             icon: L.divIcon({
                 className: 'custom-div-icon',
@@ -215,12 +309,20 @@ function selectNode(type, nodeId) {
 
         marker.bindPopup(`<b>${type === 'source' ? 'Origin' : 'Destination'}</b><br>${nodeId}`).openPopup();
         map.setView(n.coords, 14);
-    }
 
-    if (type === 'source') {
-        selectedSource = nodeId;
+        if (type === 'source') {
+            sourceMarker = marker;
+            selectedSource = nodeId;
+        } else {
+            destMarker = marker;
+            selectedDest = nodeId;
+        }
     } else {
-        selectedDest = nodeId;
+        if (type === 'source') {
+            selectedSource = nodeId;
+        } else {
+            selectedDest = nodeId;
+        }
     }
 }
 
@@ -244,6 +346,10 @@ async function findAllPaths() {
     pathLayers = [];
     currentPaths = [];
 
+    // Clear markers if we want them to be redrawn purely by the path response
+    if (sourceMarker) { map.removeLayer(sourceMarker); sourceMarker = null; }
+    if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+
     const btn = document.querySelector('button[onclick="findAllPaths()"]');
     const originalHTML = btn.innerHTML;
     btn.innerHTML = `
@@ -254,25 +360,45 @@ async function findAllPaths() {
     btn.classList.add('opacity-75');
 
     try {
-        // Get the optimal path
+        let sourceLat = null;
+        let sourceLon = null;
+        let destLat = null;
+        let destLon = null;
+
+        if (nodes[source]) {
+            sourceLat = nodes[source].lat;
+            sourceLon = nodes[source].lon;
+        }
+        if (nodes[dest]) {
+            destLat = nodes[dest].lat;
+            destLon = nodes[dest].lon;
+        }
+
+        // Get the multiple paths
         const res = await fetch('/path', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source, destination: dest })
+            body: JSON.stringify({
+                source,
+                destination: dest,
+                sourceLat, sourceLon, destLat, destLon
+            })
         });
-        const optimalPath = await res.json();
+        const data = await res.json();
 
-        if (!optimalPath.path || optimalPath.path.length === 0) {
+        if (!data.paths || data.paths.length === 0) {
             alert("No path found between these locations.");
             return;
         }
 
-        // Store the optimal path
-        currentPaths.push({
-            path: optimalPath.path,
-            distance: optimalPath.distance,
-            type: 'optimal',
-            pathWithCoordinates: optimalPath.pathWithCoordinates
+        // Store the multiple paths
+        data.paths.forEach((p, idx) => {
+            currentPaths.push({
+                path: p.path,
+                distance: p.distance,
+                type: idx === 0 ? 'optimal' : 'alternative',
+                pathWithCoordinates: p.pathWithCoordinates
+            });
         });
 
         displayPaths();
@@ -311,6 +437,28 @@ function displayPaths() {
             // Fit bounds to show all paths
             if (idx === 0) {
                 map.fitBounds(pathLayer.getBounds(), { padding: [80, 80] });
+
+                // Add Origin and Destination Markers from the path coordinates to ensure they display properly
+                const originCoord = [pathData.pathWithCoordinates[0].latitude, pathData.pathWithCoordinates[0].longitude];
+                const destCoord = [pathData.pathWithCoordinates[pathData.pathWithCoordinates.length - 1].latitude, pathData.pathWithCoordinates[pathData.pathWithCoordinates.length - 1].longitude];
+
+                sourceMarker = L.marker(originCoord, {
+                    icon: L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style='background-color:#10b981; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);'></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    })
+                }).addTo(map).bindPopup(`<b>Origin</b><br>${pathData.path[0]}`);
+
+                destMarker = L.marker(destCoord, {
+                    icon: L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style='background-color:#ef4444; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);'></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    })
+                }).addTo(map).bindPopup(`<b>Destination</b><br>${pathData.path[pathData.path.length - 1]}`);
             }
         }
 
