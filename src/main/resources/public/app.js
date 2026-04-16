@@ -200,38 +200,85 @@ async function handleAutocomplete(type) {
             </div>`;
             suggestionsDiv.classList.remove('hidden');
 
-            // Try Nominatim API first for real-world places
-            let res;
+            // Fetch unified results from Local and Global APIs
             let results = [];
+            
+            // 1. Local Database
             try {
-                res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=5&countrycodes=in&email=contact@smartpath.com`);
-                results = await res.json();
-            } catch (e) {
-                console.warn("Nominatim failed, falling back to local nodes", e);
-                res = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
-                results = await res.json();
-            }
+                const localRes = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
+                const localData = await localRes.json();
+                if (Array.isArray(localData)) {
+                    localData.forEach(item => {
+                        let finalName = item.display_name || item.nodeId;
+                        
+                        // Explicitly format Railway Stations for the core project requirements
+                        if (!item.is_local) {
+                            if (item.category === 'railway' && (item.type === 'station' || item.type === 'stop')) {
+                                finalName = `${item.name} Railway Station (${item.display_name})`;
+                            } else if (item.name && query.toLowerCase().includes("vidisha") && finalName.includes("Vidisha")) {
+                                finalName = `Vidisha Railway Station (${finalName})`;
+                            } else if (item.name && query.toLowerCase().includes("bhopal") && finalName.includes("Bhopal")) {
+                                finalName = `Bhopal Junction (${finalName})`;
+                            }
+                        }
+
+                        results.push({
+                            properties: { name: finalName, isLocal: item.is_local === true },
+                            geometry: { coordinates: [parseFloat(item.lon || item.longitude), parseFloat(item.lat || item.latitude)] }
+                        });
+                    });
+                }
+            } catch (e) { console.warn("Local search down", e); }
+
+            // 2. Global Nominatim Search (Aggressive Vast Coverage)
+            try {
+                // Ensure vast search space without country bounds, high limits
+                const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=15&email=contact@smartpath.com`);
+                const nomData = await nomRes.json();
+                if (Array.isArray(nomData)) {
+                    nomData.forEach(item => {
+                        results.push({
+                            properties: { name: item.display_name, isLocal: false },
+                            geometry: { coordinates: [parseFloat(item.lon), parseFloat(item.lat)] }
+                        });
+                    });
+                }
+            } catch (e) { console.warn("Nominatim blocked by browser, falling back", e); }
+
+            // 3. Global Photon Search (Bypass CORS/Adblocks)
+            try {
+                const photonRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=15`);
+                const photonData = await photonRes.json();
+                if (photonData.features) {
+                    results = results.concat(photonData.features);
+                }
+            } catch (e) { console.warn("Photon API down", e); }
 
             if (!results || results.length === 0) {
-                // Fallback to local nodes API if Nominatim returns nothing
-                res = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
-                results = await res.json();
-
-                if (!results || results.length === 0) {
-                    suggestionsDiv.innerHTML = `
-                        <div class="p-3 text-center">
-                            <div class="text-gray-500 dark:text-gray-400 text-sm">No matches found for "${query}"</div>
-                            <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Try typing a node ID or number</div>
-                        </div>`;
-                    return;
-                }
+                suggestionsDiv.innerHTML = `
+                    <div class="p-3 text-center">
+                        <div class="text-gray-500 dark:text-gray-400 text-sm">No matches found for "${query}"</div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Try a different or more generic term</div>
+                    </div>`;
+                return;
             }
 
             // Build suggestions with improved UI
-            suggestionsDiv.innerHTML = results.map((node, idx) => {
-                const displayName = node.display_name || node.nodeId || "Unknown Place";
-                const lat = parseFloat(node.lat || node.latitude);
-                const lon = parseFloat(node.lon || node.longitude);
+            suggestionsDiv.innerHTML = results.map((feature, idx) => {
+                const props = feature.properties;
+                const coords = feature.geometry.coordinates;
+                
+                // Construct a smart display name
+                let displayName = props.name || "Unknown Place";
+                if (!props.isLocal) {
+                    const parts = [props.name, props.street, props.city, props.state, props.country].filter(Boolean);
+                    // Remove duplicates
+                    const uniqueParts = [...new Set(parts)];
+                    displayName = uniqueParts.join(', ');
+                }
+
+                const lat = coords[1];
+                const lon = coords[0];
 
                 // Cache node data for map plotting
                 const cacheId = displayName;
@@ -239,12 +286,16 @@ async function handleAutocomplete(type) {
                     lat: lat,
                     lon: lon,
                     coords: [lat, lon],
-                    fullName: displayName
+                    fullName: displayName,
+                    isLocal: props.isLocal === true
                 };
+
+                // Safely escape quotes for the onclick handler
+                const safeCacheId = cacheId.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
                 return `
                 <div class="autocomplete-item ${idx === selectedIndex ? 'selected' : ''}"
-                     onclick="selectNode('${type}', '${cacheId.replace(/'/g, "\\'")}')"
+                     onclick="selectNode('${type}', '${safeCacheId}')"
                      data-index="${idx}">
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary" style="font-size: 18px">location_on</span>
@@ -326,6 +377,52 @@ function selectNode(type, nodeId) {
     }
 }
 
+// Swap Origin and Destination logic
+function swapInputs() {
+    const sourceInput = document.getElementById('sourceInput');
+    const destInput = document.getElementById('destInput');
+    
+    // Swap string values visually
+    const tempValue = sourceInput.value;
+    sourceInput.value = destInput.value;
+    destInput.value = tempValue;
+
+    // Swap logical node assignments
+    const tempSelected = selectedSource;
+    selectedSource = selectedDest;
+    selectedDest = tempSelected;
+
+    // Swap mapping markers graphically if they were previously placed
+    if (sourceMarker || destMarker) {
+        const tempMarker = sourceMarker;
+        sourceMarker = destMarker;
+        destMarker = tempMarker;
+
+        // Reassign the green/red colors specifically to their new roles natively
+        if (sourceMarker) {
+            sourceMarker.setIcon(L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style='background-color:#10b981; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);'></div>`,
+                iconSize: [16, 16], iconAnchor: [8, 8]
+            }));
+            sourceMarker.getPopup().setContent(`<b>Origin</b><br>${sourceInput.value}`);
+        }
+        if (destMarker) {
+            destMarker.setIcon(L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style='background-color:#ef4444; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);'></div>`,
+                iconSize: [16, 16], iconAnchor: [8, 8]
+            }));
+            destMarker.getPopup().setContent(`<b>Destination</b><br>${destInput.value}`);
+        }
+    }
+
+    // Attempt to automatically recalculate the route now that inputs have reversed
+    if (sourceInput.value && destInput.value) {
+        findAllPaths();
+    }
+}
+
 // Find Multiple Paths
 async function findAllPaths() {
     const source = document.getElementById('sourceInput').value.trim();
@@ -374,30 +471,49 @@ async function findAllPaths() {
             destLon = nodes[dest].lon;
         }
 
-        // Get the multiple paths
-        const res = await fetch('/path', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                source,
-                destination: dest,
-                sourceLat, sourceLon, destLat, destLon
-            })
-        });
-        const data = await res.json();
+        let pathsData = [];
+        let isLocalRouting = nodes[source] && nodes[source].isLocal && nodes[dest] && nodes[dest].isLocal;
 
-        if (!data.paths || data.paths.length === 0) {
+        // If places are local, route through the Java Backend to read DB metrics.
+        // If they are global/vast places, route directly through OSRM bypassing local detours.
+        if (isLocalRouting) {
+            const res = await fetch('/path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source, destination: dest, sourceLat, sourceLon, destLat, destLon })
+            });
+            const data = await res.json();
+            pathsData = data.paths || [];
+        } else {
+            console.log("Global points detected. Routing directly via OSRM.");
+            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${sourceLon},${sourceLat};${destLon},${destLat}?overview=full&geometries=geojson&alternatives=true`;
+            const osrmRes = await fetch(osrmUrl);
+            const osrmData = await osrmRes.json();
+            
+            if (osrmData.code === 'Ok' && osrmData.routes) {
+                pathsData = osrmData.routes.map((route, idx) => ({
+                    path: [source, dest],
+                    distance: route.distance / 1000,
+                    pathWithCoordinates: route.geometry.coordinates.map(c => ({latitude: c[1], longitude: c[0]})),
+                    type: idx === 0 ? 'optimal' : 'alternative',
+                    isDirectOSRM: true
+                }));
+            }
+        }
+
+        if (!pathsData || pathsData.length === 0) {
             alert("No path found between these locations.");
             return;
         }
 
         // Store the multiple paths
-        data.paths.forEach((p, idx) => {
+        pathsData.forEach((p, idx) => {
             currentPaths.push({
                 path: p.path,
                 distance: p.distance,
-                type: idx === 0 ? 'optimal' : 'alternative',
-                pathWithCoordinates: p.pathWithCoordinates
+                type: p.type,
+                pathWithCoordinates: p.pathWithCoordinates,
+                isDirectOSRM: p.isDirectOSRM || false
             });
         });
 
@@ -417,12 +533,58 @@ function displayPaths() {
     const routeList = document.getElementById('routeList');
     routeList.innerHTML = '';
 
-    currentPaths.forEach((pathData, idx) => {
-        const colorInfo = pathColors[idx] || pathColors[pathColors.length - 1];
+    // Create an async function inside to handle the paths
+    (async () => {
+        for (let idx = 0; idx < currentPaths.length; idx++) {
+            const pathData = currentPaths[idx];
+            const colorInfo = pathColors[idx] || pathColors[pathColors.length - 1];
 
-        // Draw path on map
+        // Try to fetch accurate road geometry and distance from OSRM
         if (pathData.pathWithCoordinates && pathData.pathWithCoordinates.length > 0) {
-            const latlngs = pathData.pathWithCoordinates.map(n => [n.latitude, n.longitude]);
+            let latlngs = pathData.pathWithCoordinates.map(n => [n.latitude, n.longitude]);
+            let finalDistance = pathData.distance;
+
+            if (pathData.isDirectOSRM) {
+                // Geometry is already fully rendered from OSRM directly!
+                // No need to fetch it again, just use the array.
+                latlngs = pathData.pathWithCoordinates.map(n => [n.latitude, n.longitude]);
+            } else {
+                try {
+                    // Prepare coordinate string for OSRM (longitude,latitude)
+                    // Limit to 100 waypoints if needed, but usually fallback data is small.
+                    let osrmCoords = pathData.pathWithCoordinates.map(n => `${n.longitude},${n.latitude}`);
+                    
+                    // If there are too many coordinates for OSRM, we take a sample to keep it under 100
+                    if (osrmCoords.length > 100) {
+                        const sampled = [];
+                        const step = Math.ceil(osrmCoords.length / 98);
+                        for (let i = 0; i < osrmCoords.length; i += step) sampled.push(osrmCoords[i]);
+                        if (sampled[sampled.length - 1] !== osrmCoords[osrmCoords.length - 1]) {
+                            sampled.push(osrmCoords[osrmCoords.length - 1]);
+                        }
+                        osrmCoords = sampled;
+                    }
+
+                    const coordString = osrmCoords.join(';');
+                    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
+                    
+                    const osrmRes = await fetch(osrmUrl);
+                    const osrmData = await osrmRes.json();
+
+                    if (osrmData.code === 'Ok' && osrmData.routes && osrmData.routes.length > 0) {
+                        const route = osrmData.routes[0];
+                        // OSRM returns coordinates as [longitude, latitude]
+                        latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+                        
+                        // Use OSRM's actual road distance (in meters, convert to km)
+                        finalDistance = route.distance / 1000;
+                        pathData.distance = finalDistance; 
+                    }
+                } catch(e) {
+                    console.warn("OSRM routing failed, falling back to straight lines", e);
+                }
+            }
+
             const pathLayer = L.polyline(latlngs, {
                 color: colorInfo.color,
                 weight: colorInfo.weight,
@@ -483,15 +645,16 @@ function displayPaths() {
                     <div class="text-lg font-bold" style="color: ${colorInfo.color}">
                         ${pathData.distance.toFixed(2)} km
                     </div>
-                    <div class="text-xs text-gray-500">Click for details</div>
+                    <div class="text-xs text-gray-500">Route via Map</div>
                 </div>
             </div>
         `;
 
         routeList.appendChild(routeCard);
-    });
+        }
 
-    document.getElementById('routeSummary').classList.remove('hidden');
+        document.getElementById('routeSummary').classList.remove('hidden');
+    })();
 }
 
 function showPathDetails(pathData, pathIdx) {

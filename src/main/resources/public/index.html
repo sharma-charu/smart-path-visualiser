@@ -165,8 +165,8 @@
 
                     <!-- Swap Icon -->
                     <div class="absolute right-2 top-[82px] z-10">
-                        <div
-                            class="bg-[#e2e8f0] border border-[#cbd5e1] rounded-lg p-2 cursor-pointer hover:bg-slate-300 flex items-center justify-center shadow-sm">
+                        <div onclick="swapInputs()" title="Swap Origin and Destination"
+                            class="bg-[#e2e8f0] border border-[#cbd5e1] rounded-lg p-2 cursor-pointer hover:bg-slate-300 flex items-center justify-center shadow-sm transition-transform active:rotate-180">
                             <span class="material-symbols-outlined text-slate-700"
                                 style="font-size: 20px;">swap_vert</span>
                         </div>
@@ -418,7 +418,7 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2.2"></script>
 
 </body>
 
