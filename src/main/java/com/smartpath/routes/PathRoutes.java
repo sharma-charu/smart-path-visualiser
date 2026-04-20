@@ -33,8 +33,13 @@ public class PathRoutes {
         Double sourceLon = body.get("sourceLon") != null ? (Double) body.get("sourceLon") : null;
         Double destLat = body.get("destLat") != null ? (Double) body.get("destLat") : null;
         Double destLon = body.get("destLon") != null ? (Double) body.get("destLon") : null;
+        
+        Boolean prefTolls = body.get("prefTolls") != null ? (Boolean) body.get("prefTolls") : false;
+        Boolean prefHighways = body.get("prefHighways") != null ? (Boolean) body.get("prefHighways") : false;
+        Boolean prefQuality = body.get("prefQuality") != null ? (Boolean) body.get("prefQuality") : true;
+        Boolean prefObstacles = body.get("prefObstacles") != null ? (Boolean) body.get("prefObstacles") : true;
 
-        Map<String, List<DijkstraService.Edge>> graph = RoadService.buildGraph();
+        Map<String, List<DijkstraService.Edge>> graph = RoadService.buildGraph(prefTolls, prefHighways, prefQuality, prefObstacles);
 
         // Snap to nearest graph nodes if latitudes are provided
         String actualGraphSource = source;

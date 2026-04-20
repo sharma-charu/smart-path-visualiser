@@ -192,22 +192,22 @@
                 <h2 class="font-bold text-gray-900 mb-4 text-[15px]">Route Preferences</h2>
                 <div class="space-y-3.5">
                     <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked
+                        <input type="checkbox" id="pref-tolls"
                             class="w-4 h-4 text-[#3b82f6] bg-gray-100 border-gray-300 rounded focus:ring-[#3b82f6]">
                         <span class="text-sm text-gray-700">Avoid tolls</span>
                     </label>
                     <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox"
+                        <input type="checkbox" id="pref-highways"
                             class="w-4 h-4 text-[#3b82f6] bg-gray-100 border-gray-300 rounded focus:ring-[#3b82f6]">
                         <span class="text-sm text-gray-700">Avoid highways</span>
                     </label>
                     <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked
+                        <input type="checkbox" id="pref-quality" checked
                             class="w-4 h-4 text-[#3b82f6] bg-gray-100 border-gray-300 rounded focus:ring-[#3b82f6]">
                         <span class="text-sm text-gray-700">Show road quality</span>
                     </label>
                     <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked
+                        <input type="checkbox" id="pref-obstacles" checked
                             class="w-4 h-4 text-[#3b82f6] bg-gray-100 border-gray-300 rounded focus:ring-[#3b82f6]">
                         <span class="text-sm text-gray-700">Show obstacles</span>
                     </label>
@@ -220,19 +220,19 @@
                 <div class="space-y-3.5 text-sm">
                     <div class="flex justify-between items-center">
                         <span class="text-gray-500">Distance</span>
-                        <span class="font-bold text-gray-900">12.4 km</span>
+                        <span id="summary-distance" class="font-bold text-gray-900">--</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-500">Est. Time</span>
-                        <span class="font-bold text-gray-900">18 min</span>
+                        <span id="summary-time" class="font-bold text-gray-900">--</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-500">Road Quality</span>
-                        <span class="font-bold text-green-600">Good</span>
+                        <span id="summary-quality" class="font-bold text-gray-500">--</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-500">Obstacles</span>
-                        <span class="font-bold text-red-500">0 detected</span>
+                        <span id="summary-obstacles" class="font-bold text-gray-500">--</span>
                     </div>
                 </div>
             </div>

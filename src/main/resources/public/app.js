@@ -471,6 +471,11 @@ async function findAllPaths() {
             destLon = nodes[dest].lon;
         }
 
+        const prefTolls = document.getElementById('pref-tolls')?.checked || false;
+        const prefHighways = document.getElementById('pref-highways')?.checked || false;
+        const prefQuality = document.getElementById('pref-quality')?.checked || false;
+        const prefObstacles = document.getElementById('pref-obstacles')?.checked || false;
+
         let pathsData = [];
         let isLocalRouting = nodes[source] && nodes[source].isLocal && nodes[dest] && nodes[dest].isLocal;
 
@@ -480,7 +485,10 @@ async function findAllPaths() {
             const res = await fetch('/path', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, destination: dest, sourceLat, sourceLon, destLat, destLon })
+                body: JSON.stringify({ 
+                    source, destination: dest, sourceLat, sourceLon, destLat, destLon,
+                    prefTolls, prefHighways, prefQuality, prefObstacles
+                })
             });
             const data = await res.json();
             pathsData = data.paths || [];
@@ -494,6 +502,9 @@ async function findAllPaths() {
                 pathsData = osrmData.routes.map((route, idx) => ({
                     path: [source, dest],
                     distance: route.distance / 1000,
+                    time: Math.round(route.duration / 60), // OSRM gives duration in seconds
+                    quality: 4.0, // Default for global paths
+                    obstacles: 0,
                     pathWithCoordinates: route.geometry.coordinates.map(c => ({latitude: c[1], longitude: c[0]})),
                     type: idx === 0 ? 'optimal' : 'alternative',
                     isDirectOSRM: true
@@ -511,6 +522,9 @@ async function findAllPaths() {
             currentPaths.push({
                 path: p.path,
                 distance: p.distance,
+                time: p.time,
+                quality: p.quality,
+                obstacles: p.obstacles,
                 type: p.type,
                 pathWithCoordinates: p.pathWithCoordinates,
                 isDirectOSRM: p.isDirectOSRM || false
@@ -621,6 +635,24 @@ function displayPaths() {
                         iconAnchor: [8, 8]
                     })
                 }).addTo(map).bindPopup(`<b>Destination</b><br>${pathData.path[pathData.path.length - 1]}`);
+                
+                // Update Route Summary UI with values from the optimal path
+                document.getElementById('summary-distance').textContent = `${pathData.distance.toFixed(2)} km`;
+                if (pathData.time !== undefined) {
+                    const hours = Math.floor(pathData.time / 60);
+                    const mins = pathData.time % 60;
+                    document.getElementById('summary-time').textContent = hours > 0 ? `${hours} hr ${mins} min` : `${mins} min`;
+                }
+                if (pathData.quality !== undefined) {
+                    let qText = "Excellent";
+                    if (pathData.quality < 2.5) qText = "Poor";
+                    else if (pathData.quality < 3.8) qText = "Fair";
+                    else if (pathData.quality < 4.5) qText = "Good";
+                    document.getElementById('summary-quality').textContent = `${qText} (${pathData.quality.toFixed(1)}/5)`;
+                }
+                if (pathData.obstacles !== undefined) {
+                    document.getElementById('summary-obstacles').textContent = pathData.obstacles;
+                }
             }
         }
 

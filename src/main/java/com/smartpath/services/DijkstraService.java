@@ -7,10 +7,18 @@ public class DijkstraService {
     public static class Edge {
         public String to;
         public double weight;
+        public double distance;
+        public int surfaceCondition;
+        public int obstacleCount;
+        public int trafficDensity;
 
-        public Edge(String to, double weight) {
+        public Edge(String to, double weight, double distance, int surfaceCondition, int obstacleCount, int trafficDensity) {
             this.to = to;
             this.weight = weight;
+            this.distance = distance;
+            this.surfaceCondition = surfaceCondition;
+            this.obstacleCount = obstacleCount;
+            this.trafficDensity = trafficDensity;
         }
     }
 
@@ -84,7 +92,43 @@ public class DijkstraService {
 
         Map<String, Object> result = new HashMap<>();
         result.put("path", path);
-        result.put("distance", dist.getOrDefault(destination, -1.0));
+        result.put("weight", dist.getOrDefault(destination, -1.0));
+        
+        // Calculate the aggregate metrics
+        double totalDistance = 0.0;
+        int totalObstacles = 0;
+        double sumQuality = 0.0;
+        int totalTime = 0;
+        int edgesCount = 0;
+
+        if (path.size() > 1) {
+            for (int i = 0; i < path.size() - 1; i++) {
+                String u = path.get(i);
+                String v = path.get(i + 1);
+                if (graph.containsKey(u)) {
+                    for (Edge e : graph.get(u)) {
+                        if (e.to.equals(v)) {
+                            totalDistance += e.distance;
+                            totalObstacles += e.obstacleCount;
+                            sumQuality += e.surfaceCondition;
+                            
+                            double speed = 40.0 - (e.trafficDensity * 5.0);
+                            if (speed < 10) speed = 10;
+                            totalTime += (int)((e.distance / speed) * 60);
+
+                            edgesCount++;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        result.put("distance", totalDistance);
+        result.put("time", totalTime);
+        result.put("quality", edgesCount > 0 ? (sumQuality / edgesCount) : 0);
+        result.put("obstacles", totalObstacles);
+
         return result;
     }
 
@@ -162,7 +206,10 @@ public class DijkstraService {
 
                     Map<String, Object> candidate = new HashMap<>();
                     candidate.put("path", totalPath);
-                    candidate.put("distance", totalDist);
+                    candidate.put("weight", totalDist);
+                    // We only use distance comparator, so we should map totalDist to weight temporarily
+                    // then we might need to fully calculate all aggregate stats for the concatenated path.
+                    candidate.put("distance", totalDist); 
 
                     boolean exists = false;
                     for (Map<String, Object> b : B) {

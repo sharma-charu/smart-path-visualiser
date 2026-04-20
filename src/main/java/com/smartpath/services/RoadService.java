@@ -14,7 +14,7 @@ import java.util.Map;
 
 public class RoadService {
 
-    public static Map<String, List<Edge>> buildGraph() {
+    public static Map<String, List<Edge>> buildGraph(boolean avoidTolls, boolean avoidHighways, boolean prefQuality, boolean prefObstacles) {
         Map<String, List<Edge>> graph = new HashMap<>();
 
         String sql = "SELECT r.from_node, r.to_node, r.distance, " +
@@ -31,17 +31,40 @@ public class RoadService {
                 String to = rs.getString("to_node");
                 double distance = rs.getDouble("distance");
 
-                // Get metrics, default to average/good if null (unused metrics removed)
+                int surfaceCondition = rs.getInt("surface_condition");
+                if (rs.wasNull()) surfaceCondition = 4;
+                int trafficDensity = rs.getInt("traffic_density");
+                if (rs.wasNull()) trafficDensity = 2;
+                int safetyScore = rs.getInt("safety_score");
+                if (rs.wasNull()) safetyScore = 4;
+                int obstacleCount = rs.getInt("obstacle_count");
+
+                // Simulated checks since no schema column exists yet
+                boolean isHighway = distance > 5.0;
+                boolean isToll = distance > 8.0;
 
                 double weight = distance;
+                
+                if (avoidHighways && isHighway) {
+                    weight += 50.0;
+                }
+                if (avoidTolls && isToll) {
+                    weight += 50.0;
+                }
+                if (prefObstacles) {
+                    weight += obstacleCount * 2.0;
+                }
+                if (prefQuality) {
+                    weight += (5 - surfaceCondition) * 2.0;
+                    weight += trafficDensity * 1.5;
+                    weight += (5 - safetyScore);
+                }
 
                 graph.putIfAbsent(from, new ArrayList<>());
-                graph.putIfAbsent(to, new ArrayList<>()); // bidirectionality? Roads usually 2-way but graph might be
-                                                          // directed.
-                // Assuming undirected for simplicity unless specified.
-                // Let's make it undirected (add both ways)
-                graph.get(from).add(new Edge(to, weight));
-                graph.get(to).add(new Edge(from, weight));
+                graph.putIfAbsent(to, new ArrayList<>());
+
+                graph.get(from).add(new Edge(to, weight, distance, surfaceCondition, obstacleCount, trafficDensity));
+                graph.get(to).add(new Edge(from, weight, distance, surfaceCondition, obstacleCount, trafficDensity));
             }
         } catch (Exception e) {
             e.printStackTrace();
