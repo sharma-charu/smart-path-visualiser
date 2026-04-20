@@ -283,44 +283,44 @@
                         <div class="relative">
                             <div class="flex justify-between text-xs font-medium mb-3">
                                 <span class="text-gray-700">Surface Condition</span>
-                                <span class="text-[#10b981] font-bold text-sm">85%</span>
+                                <span id="val-surface" class="text-[#10b981] font-bold text-sm">85%</span>
                             </div>
                             <div class="relative w-full">
-                                <input type="range" min="0" max="100" value="85" class="w-full relative z-10">
-                                <div class="filled-track" style="width: 85%;"></div>
+                                <input type="range" id="slider-surface" oninput="updateSliderValue('surface')" min="0" max="100" value="85" class="w-full relative z-10">
+                                <div id="track-surface" class="filled-track" style="width: 85%;"></div>
                             </div>
                         </div>
 
                         <div class="relative">
                             <div class="flex justify-between text-xs font-medium mb-3">
                                 <span class="text-gray-700">Traffic Density</span>
-                                <span class="text-[#f59e0b] font-bold text-sm">62%</span>
+                                <span id="val-traffic" class="text-[#f59e0b] font-bold text-sm">62%</span>
                             </div>
                             <div class="relative w-full">
-                                <input type="range" min="0" max="100" value="62" class="w-full relative z-10">
-                                <div class="filled-track" style="width: 62%;"></div>
+                                <input type="range" id="slider-traffic" oninput="updateSliderValue('traffic')" min="0" max="100" value="62" class="w-full relative z-10">
+                                <div id="track-traffic" class="filled-track" style="width: 62%;"></div>
                             </div>
                         </div>
 
                         <div class="relative">
                             <div class="flex justify-between text-xs font-medium mb-3">
                                 <span class="text-gray-700">Safety Score</span>
-                                <span class="text-[#3b82f6] font-bold text-sm">92%</span>
+                                <span id="val-safety" class="text-[#3b82f6] font-bold text-sm">92%</span>
                             </div>
                             <div class="relative w-full">
-                                <input type="range" min="0" max="100" value="92" class="w-full relative z-10">
-                                <div class="filled-track" style="width: 92%;"></div>
+                                <input type="range" id="slider-safety" oninput="updateSliderValue('safety')" min="0" max="100" value="92" class="w-full relative z-10">
+                                <div id="track-safety" class="filled-track" style="width: 92%;"></div>
                             </div>
                         </div>
 
                         <div class="relative">
                             <div class="flex justify-between text-xs font-medium mb-3">
                                 <span class="text-gray-700">Weather Impact</span>
-                                <span class="text-[#ef4444] font-bold text-sm">34%</span>
+                                <span id="val-weather" class="text-[#ef4444] font-bold text-sm">34%</span>
                             </div>
                             <div class="relative w-full">
-                                <input type="range" min="0" max="100" value="34" class="w-full relative z-10">
-                                <div class="filled-track" style="width: 34%;"></div>
+                                <input type="range" id="slider-weather" oninput="updateSliderValue('weather')" min="0" max="100" value="34" class="w-full relative z-10">
+                                <div id="track-weather" class="filled-track" style="width: 34%;"></div>
                             </div>
                         </div>
                     </div>
@@ -332,7 +332,7 @@
                             rows="2" placeholder="Share any specific road conditions or observations..."></textarea>
                     </div>
 
-                    <button
+                    <button onclick="analyzeRoadConditions()"
                         class="mt-4 w-full bg-[#10b981] hover:bg-[#059669] text-white py-3 rounded-lg font-semibold text-sm transition-colors">
                         Submit Quality Update
                     </button>
@@ -343,35 +343,9 @@
                     class="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-100 p-6 flex flex-col">
                     <h2 class="font-bold text-gray-900 mb-5 text-[15px]">Obstacles & Alerts</h2>
 
-                    <div class="space-y-4 flex-1">
-
-                        <!-- Alert 1 (Red) -->
-                        <div class="bg-red-50 border border-red-100 rounded-lg p-3.5 flex gap-3 items-start">
-                            <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-red-500"></div>
-                            <div>
-                                <div class="text-sm font-semibold text-red-700 mb-0.5">Construction Zone</div>
-                                <div class="text-xs text-red-600">Main St (Mile 2.3) - Lane closure</div>
-                            </div>
-                        </div>
-
-                        <!-- Alert 2 (Yellow) -->
-                        <div class="bg-amber-50 border border-amber-100 rounded-lg p-3.5 flex gap-3 items-start">
-                            <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-amber-500"></div>
-                            <div>
-                                <div class="text-sm font-semibold text-amber-700 mb-0.5">Heavy Traffic</div>
-                                <div class="text-xs text-amber-600">Highway 101 (Mile 5.1) - 15 min delay</div>
-                            </div>
-                        </div>
-
-                        <!-- Alert 3 (Blue) -->
-                        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3.5 flex gap-3 items-start">
-                            <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-blue-500"></div>
-                            <div>
-                                <div class="text-sm font-semibold text-blue-700 mb-0.5">Weather Alert</div>
-                                <div class="text-xs text-blue-600">Light rain expected - Reduce speed</div>
-                            </div>
-                        </div>
-
+                    <div id="alerts-container" class="space-y-4 flex-1">
+                        <!-- Dynamic content will go here. Initial state below -->
+                        
                         <!-- Alert 4 (Green) -->
                         <div class="bg-green-50 border border-green-100 rounded-lg p-3.5 flex gap-3 items-start">
                             <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-green-500"></div>
@@ -418,7 +392,7 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="app.js?v=2.2"></script>
+    <script src="app.js?v=2.3"></script>
 
 </body>
 

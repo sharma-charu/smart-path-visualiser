@@ -818,3 +818,66 @@ async function submitReview() {
         alert("❌ Failed to submit review.");
     }
 }
+
+// Slider logic
+function updateSliderValue(sliderType) {
+    const val = document.getElementById('slider-' + sliderType).value;
+    document.getElementById('val-' + sliderType).textContent = val + '%';
+    document.getElementById('track-' + sliderType).style.width = val + '%';
+    analyzeRoadConditions(); // Live update alerts based on slider
+}
+
+// AI Rules Implementation
+function analyzeRoadConditions() {
+    const surface = parseInt(document.getElementById('slider-surface').value, 10);
+    const traffic = parseInt(document.getElementById('slider-traffic').value, 10);
+    const safety = parseInt(document.getElementById('slider-safety').value, 10);
+    const weather = parseInt(document.getElementById('slider-weather').value, 10);
+
+    const alertsContainer = document.getElementById('alerts-container');
+    alertsContainer.innerHTML = ''; // Clear previous
+
+    let alerts = [];
+
+    // Analyze conditions based on provided prompt rules
+    if (surface < 40) {
+        alerts.push({ type: 'Poor Road Condition Alert', desc: 'Low surface quality detected', severity: 'High', color: 'red' });
+    }
+    if (traffic > 70) {
+        alerts.push({ type: 'Heavy Traffic Alert', desc: 'High traffic density detected', severity: 'Medium', color: 'amber' });
+    }
+    if (safety < 50) {
+        alerts.push({ type: 'Unsafe Route Warning', desc: 'Low safety score detected', severity: 'High', color: 'red' });
+    }
+    if (weather > 60) {
+        alerts.push({ type: 'Weather Alert', desc: 'High weather impact detected', severity: 'Medium', color: 'blue' });
+    }
+
+    // Render alerts
+    if (alerts.length === 0) {
+        // Clear Path
+        alertsContainer.innerHTML = `
+            <div class="bg-green-50 border border-green-100 rounded-lg p-3.5 flex gap-3 items-start">
+                <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-green-500"></div>
+                <div>
+                    <div class="text-sm font-semibold text-green-700 mb-0.5">Clear Path</div>
+                    <div class="text-xs text-green-600">No obstacles detected</div>
+                </div>
+            </div>
+        `;
+    } else {
+        alerts.forEach(alert => {
+            const color = alert.color;
+            const html = `
+                <div class="bg-${color}-50 border border-${color}-100 rounded-lg p-3.5 flex gap-3 items-start mb-4">
+                    <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-${color}-500"></div>
+                    <div>
+                        <div class="text-sm font-semibold text-${color}-700 mb-0.5">${alert.type} - ${alert.severity} Severity</div>
+                        <div class="text-xs text-${color}-600">${alert.desc}</div>
+                    </div>
+                </div>
+            `;
+            alertsContainer.innerHTML += html;
+        });
+    }
+}
