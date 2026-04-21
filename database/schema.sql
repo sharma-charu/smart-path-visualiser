@@ -4,7 +4,9 @@
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    email TEXT,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    trust_rating REAL DEFAULT 5.0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -28,10 +30,10 @@ CREATE TABLE IF NOT EXISTS roads (
 -- 4. Road Metrics Table (Dynamic Data)
 CREATE TABLE IF NOT EXISTS road_metrics (
     road_id INTEGER PRIMARY KEY,
-    surface_condition INTEGER CHECK(surface_condition BETWEEN 1 AND 5),
-    traffic_density INTEGER CHECK(traffic_density BETWEEN 1 AND 5),
-    safety_score INTEGER CHECK(safety_score BETWEEN 1 AND 5),
-    weather_impact INTEGER CHECK(weather_impact BETWEEN 1 AND 5),
+    surface_condition INTEGER DEFAULT 50 CHECK(surface_condition BETWEEN 0 AND 100),
+    traffic_density INTEGER DEFAULT 50 CHECK(traffic_density BETWEEN 0 AND 100),
+    safety_score INTEGER DEFAULT 50 CHECK(safety_score BETWEEN 0 AND 100),
+    weather_impact INTEGER DEFAULT 50 CHECK(weather_impact BETWEEN 0 AND 100),
     obstacle_count INTEGER DEFAULT 0,
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (road_id) REFERENCES roads(road_id)

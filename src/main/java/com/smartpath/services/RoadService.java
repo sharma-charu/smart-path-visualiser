@@ -32,18 +32,34 @@ public class RoadService {
                 double distance = rs.getDouble("distance");
 
                 int surfaceCondition = rs.getInt("surface_condition");
-                if (rs.wasNull()) surfaceCondition = 4;
+                if (rs.wasNull()) surfaceCondition = 50;
                 int trafficDensity = rs.getInt("traffic_density");
-                if (rs.wasNull()) trafficDensity = 2;
+                if (rs.wasNull()) trafficDensity = 50;
                 int safetyScore = rs.getInt("safety_score");
-                if (rs.wasNull()) safetyScore = 4;
+                if (rs.wasNull()) safetyScore = 50;
+                int weatherImpact = rs.getInt("weather_impact");
+                if (rs.wasNull()) weatherImpact = 50;
                 int obstacleCount = rs.getInt("obstacle_count");
 
                 // Simulated checks since no schema column exists yet
                 boolean isHighway = distance > 5.0;
                 boolean isToll = distance > 8.0;
 
-                double weight = distance;
+                // Normalize penalties to a factor (0.0 to 1.0)
+                // 100 surface = perfect, 0 surface = terrible
+                double surfacePenalty = (100.0 - surfaceCondition) / 100.0;
+                // 100 traffic = jammed, 0 traffic = clear
+                double trafficPenalty = trafficDensity / 100.0;
+                // 100 safety = perfectly safe, 0 safety = dangerous
+                double safetyPenalty = (100.0 - safetyScore) / 100.0;
+                // 100 weather = high impact, 0 = clear
+                double weatherPenalty = weatherImpact / 100.0;
+                
+                // Average penalty factor from the 4 metrics combined
+                double combinedPenalty = (surfacePenalty + trafficPenalty + safetyPenalty + weatherPenalty) / 4.0;
+                
+                // Weight formula: distance as base, adjusted dynamically by qualities
+                double weight = distance * (1.0 + combinedPenalty);
                 
                 if (avoidHighways && isHighway) {
                     weight += 50.0;
@@ -54,17 +70,12 @@ public class RoadService {
                 if (prefObstacles) {
                     weight += obstacleCount * 2.0;
                 }
-                if (prefQuality) {
-                    weight += (5 - surfaceCondition) * 2.0;
-                    weight += trafficDensity * 1.5;
-                    weight += (5 - safetyScore);
-                }
 
                 graph.putIfAbsent(from, new ArrayList<>());
                 graph.putIfAbsent(to, new ArrayList<>());
 
-                graph.get(from).add(new Edge(to, weight, distance, surfaceCondition, obstacleCount, trafficDensity));
-                graph.get(to).add(new Edge(from, weight, distance, surfaceCondition, obstacleCount, trafficDensity));
+                graph.get(from).add(new Edge(to, weight, distance, surfaceCondition, obstacleCount, trafficDensity, safetyScore, weatherImpact));
+                graph.get(to).add(new Edge(from, weight, distance, surfaceCondition, obstacleCount, trafficDensity, safetyScore, weatherImpact));
             }
         } catch (Exception e) {
             e.printStackTrace();

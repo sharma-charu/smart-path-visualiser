@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login / Signup - Smart Route Analyzer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="h-screen flex items-center justify-center p-6">
+
+    <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-8 w-full max-w-md">
+        
+        <!-- Toggle Tabs -->
+        <div class="flex border-b border-gray-200 mb-6">
+            <button id="tab-login" onclick="switchTab('login')" class="flex-1 py-3 font-semibold text-primary border-b-2 border-indigo-500 text-indigo-600 transition">Login</button>
+            <button id="tab-signup" onclick="switchTab('signup')" class="flex-1 py-3 font-semibold text-gray-500 hover:text-gray-700 transition">Sign Up</button>
+        </div>
+
+        <!-- Login Form -->
+        <form id="form-login" onsubmit="handleLogin(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="login-email" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="login-password" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-2.5 font-semibold transition">Log In</button>
+            <p id="login-error" class="text-red-500 text-sm mt-2 hidden"></p>
+        </form>
+
+        <!-- Signup Form -->
+        <form id="form-signup" onsubmit="handleSignup(event)" class="space-y-4 hidden">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input type="text" id="signup-name" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="signup-email" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="signup-password" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-2.5 font-semibold transition">Sign Up</button>
+            <p id="signup-error" class="text-red-500 text-sm mt-2 hidden"></p>
+            <p id="signup-success" class="text-green-500 text-sm mt-2 hidden">Account created! Please log in.</p>
+        </form>
+
+        <div class="mt-6 text-center">
+            <a href="index.html" class="text-sm text-gray-500 hover:text-indigo-600 underline">&larr; Back to Map</a>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            if (tab === 'login') {
+                document.getElementById('form-login').classList.remove('hidden');
+                document.getElementById('form-signup').classList.add('hidden');
+                document.getElementById('tab-login').className = "flex-1 py-3 font-semibold border-b-2 border-indigo-500 text-indigo-600 transition";
+                document.getElementById('tab-signup').className = "flex-1 py-3 font-semibold text-gray-500 hover:text-gray-700 transition";
+            } else {
+                document.getElementById('form-login').classList.add('hidden');
+                document.getElementById('form-signup').classList.remove('hidden');
+                document.getElementById('tab-signup').className = "flex-1 py-3 font-semibold border-b-2 border-indigo-500 text-indigo-600 transition";
+                document.getElementById('tab-login').className = "flex-1 py-3 font-semibold text-gray-500 hover:text-gray-700 transition";
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const errDiv = document.getElementById('login-error');
+            
+            try {
+                const res = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('userEmail', email);
+                    localStorage.setItem('trustRating', data.trust_rating);
+                    window.location.href = 'index.html';
+                } else {
+                    errDiv.innerText = data.message || "Invalid credentials";
+                    errDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errDiv.innerText = "Error connecting to server";
+                errDiv.classList.remove('hidden');
+            }
+        }
+
+        async function handleSignup(e) {
+            e.preventDefault();
+            const name = document.getElementById('signup-name').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const errDiv = document.getElementById('signup-error');
+            const succDiv = document.getElementById('signup-success');
+            
+            errDiv.classList.add('hidden');
+            succDiv.classList.add('hidden');
+
+            try {
+                const res = await fetch('/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    succDiv.classList.remove('hidden');
+                    setTimeout(() => switchTab('login'), 1500);
+                } else {
+                    errDiv.innerText = data.message || "Signup failed";
+                    errDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errDiv.innerText = "Error connecting to server";
+                errDiv.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

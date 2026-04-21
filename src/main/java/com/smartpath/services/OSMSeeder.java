@@ -187,15 +187,8 @@ public class OSMSeeder {
                             roadStmt.addBatch();
                             
                             roadCount++;
-                            
-                            // Limit the number of roads to prevent excessive data
-                            if (roadCount >= 500) {
-                                break;
-                            }
                         }
                     }
-                    
-                    if (roadCount >= 500) break;
                 }
             }
             
@@ -208,10 +201,10 @@ public class OSMSeeder {
             while (rs.next()) {
                 int roadId = rs.getInt("road_id");
                 metricsStmt.setInt(1, roadId);
-                metricsStmt.setInt(2, 4); // surface_condition: good
-                metricsStmt.setInt(3, 2); // traffic_density: low-medium
-                metricsStmt.setInt(4, 4); // safety_score: good
-                metricsStmt.setInt(5, 1); // weather_impact: minimal
+                metricsStmt.setInt(2, 50); // surface_condition
+                metricsStmt.setInt(3, 50); // traffic_density
+                metricsStmt.setInt(4, 50); // safety_score
+                metricsStmt.setInt(5, 50); // weather_impact
                 metricsStmt.setInt(6, 0); // obstacle_count: none
                 metricsStmt.addBatch();
             }
@@ -305,7 +298,7 @@ public class OSMSeeder {
             PreparedStatement metricsStmt = conn.prepareStatement(
                 "INSERT OR IGNORE INTO road_metrics " +
                 "(road_id, surface_condition, traffic_density, safety_score, weather_impact, obstacle_count) " +
-                "SELECT road_id, 4, 2, 4, 1, 0 FROM roads"
+                "SELECT road_id, 50, 50, 50, 50, 0 FROM roads"
             );
             metricsStmt.execute();
             

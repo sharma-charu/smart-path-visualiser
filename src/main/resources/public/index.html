@@ -140,9 +140,9 @@
                 <p class="text-[0.7rem] text-gray-500">Advanced Map Visualization & Path Optimization</p>
             </div>
         </div>
-        <div>
-            <button
-                class="px-5 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-medium rounded-lg text-sm transition-colors">Login</button>
+        <div id="auth-container">
+            <a href="login.html"
+                class="px-5 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-medium rounded-lg text-sm transition-colors">Login / Signup</a>
         </div>
     </header>
 
@@ -351,7 +351,7 @@
                             <div class="mt-1 flex-shrink-0 w-2 h-2 rounded-full bg-green-500"></div>
                             <div>
                                 <div class="text-sm font-semibold text-green-700 mb-0.5">Clear Path</div>
-                                <div class="text-xs text-green-600">Oak Ave - No obstacles detected</div>
+                                <div class="text-xs text-green-600">No obstacles detected</div>
                             </div>
                         </div>
 
@@ -389,10 +389,35 @@
         </div>
     </div>
 
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="app.js?v=2.3"></script>
+
+    <script>
+        // Auth Logic for generic header UI
+        document.addEventListener('DOMContentLoaded', () => {
+            const userEmail = localStorage.getItem('userEmail');
+            const trustRating = localStorage.getItem('trustRating') || "5.0";
+            if (userEmail) {
+                const authContainer = document.getElementById('auth-container');
+                authContainer.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="flex flex-col text-right">
+                            <span class="text-sm font-bold text-gray-900">${userEmail}</span>
+                            <span class="text-xs ${parseFloat(trustRating) < 2.5 ? 'text-red-500' : 'text-green-500'} font-medium">Rating: ${trustRating}</span>
+                        </div>
+                        <button onclick="logout()" class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 font-medium rounded-lg text-xs transition-colors">Logout</button>
+                    </div>
+                `;
+            }
+        });
+
+        function logout() {
+            localStorage.removeItem('userEmail');
+            localStorage.removeItem('trustRating');
+            window.location.reload();
+        }
+    </script>
 
 </body>
 

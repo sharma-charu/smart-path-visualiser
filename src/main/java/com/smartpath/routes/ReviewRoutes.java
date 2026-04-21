@@ -26,9 +26,10 @@ public class ReviewRoutes {
         int roadId = ((Double) body.get("road_id")).intValue();
         int rating = ((Double) body.get("rating")).intValue();
         String comment = (String) body.get("comment");
+        String email = (String) body.get("email");
 
-        boolean success = ReviewService.addReview(roadId, rating, comment);
-        return gson.toJson(Map.of("success", success));
+        boolean success = ReviewService.addReview(roadId, rating, comment, email);
+        return gson.toJson(Map.of("success", success, "message", success ? "Review added" : "Review rejected due to low trust score or error"));
     };
 
     private static Route handleGetReviews = (Request req, Response res) -> {

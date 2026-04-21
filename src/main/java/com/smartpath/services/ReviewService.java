@@ -10,13 +10,28 @@ import java.util.List;
 
 public class ReviewService {
 
-    public static boolean addReview(int roadId, int rating, String comment) {
-        String sql = "INSERT INTO reviews (road_id, rating, comment) VALUES (?, ?, ?)";
+    public static boolean addReview(int roadId, int rating, String comment, String email) {
+        Integer userId = null;
+        if (email != null && !email.isEmpty()) {
+            double trustRating = AuthService.getUserTrustRating(email);
+            if (trustRating < 2.5) {
+                return false; // Reject review data
+            }
+            userId = AuthService.getUserId(email);
+        }
+
+        String sql = "INSERT INTO reviews (road_id, rating, comment, user_id) VALUES (?, ?, ?, ?)";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, roadId);
             pstmt.setInt(2, rating);
             pstmt.setString(3, comment);
+            if (userId != null) {
+                pstmt.setInt(4, userId);
+            } else {
+                pstmt.setNull(4, java.sql.Types.INTEGER);
+            }
+            
             int affected = pstmt.executeUpdate();
             
             if (affected > 0) {

@@ -11,14 +11,18 @@ public class DijkstraService {
         public int surfaceCondition;
         public int obstacleCount;
         public int trafficDensity;
+        public int safetyScore;
+        public int weatherImpact;
 
-        public Edge(String to, double weight, double distance, int surfaceCondition, int obstacleCount, int trafficDensity) {
+        public Edge(String to, double weight, double distance, int surfaceCondition, int obstacleCount, int trafficDensity, int safetyScore, int weatherImpact) {
             this.to = to;
             this.weight = weight;
             this.distance = distance;
             this.surfaceCondition = surfaceCondition;
             this.obstacleCount = obstacleCount;
             this.trafficDensity = trafficDensity;
+            this.safetyScore = safetyScore;
+            this.weatherImpact = weatherImpact;
         }
     }
 
@@ -110,9 +114,11 @@ public class DijkstraService {
                         if (e.to.equals(v)) {
                             totalDistance += e.distance;
                             totalObstacles += e.obstacleCount;
-                            sumQuality += e.surfaceCondition;
+                            sumQuality += e.surfaceCondition; // 0-100 scale now
                             
-                            double speed = 40.0 - (e.trafficDensity * 5.0);
+                            // Speed is now calculated based on 0-100 traffic density
+                            // E.g. traffic 0 = 40km/h, traffic 100 = 10km/h
+                            double speed = 40.0 - (e.trafficDensity * 0.3);
                             if (speed < 10) speed = 10;
                             totalTime += (int)((e.distance / speed) * 60);
 

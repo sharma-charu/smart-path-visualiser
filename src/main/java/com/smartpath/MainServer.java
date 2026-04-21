@@ -35,6 +35,7 @@ public class MainServer {
         com.smartpath.routes.PathRoutes.register();
         com.smartpath.routes.ComplaintRoutes.register();
         com.smartpath.routes.ReviewRoutes.register();
+        com.smartpath.routes.AuthRoutes.register();
 
         // Test Endpoint
         get("/hello", (req, res) -> "Smart Route Analyzer Backend is Running!");

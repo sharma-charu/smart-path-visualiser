@@ -801,19 +801,27 @@ async function submitReview() {
     const roadId = document.getElementById('reviewRoadSelect').value;
     const rating = document.getElementById('reviewRating').value;
     const comment = document.getElementById('reviewComment').value;
+    const email = localStorage.getItem('userEmail');
 
     try {
-        await fetch('/reviews', {
+        const res = await fetch('/reviews', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 road_id: parseFloat(roadId),
                 rating: parseFloat(rating),
-                comment: comment
+                comment: comment,
+                email: email
             })
         });
-        alert("✅ Review Submitted! Road safety score updated.");
-        closeReviewModal();
+        const data = await res.json();
+        
+        if (data.success) {
+            alert("✅ " + data.message);
+            closeReviewModal();
+        } else {
+            alert("❌ " + (data.message || "Failed to submit review."));
+        }
     } catch (e) {
         alert("❌ Failed to submit review.");
     }
