@@ -33,6 +33,7 @@ public class ComplaintService {
             
             if (affected > 0) {
                 updateRoadMetrics(conn, roadId, type);
+                RoadService.clearCache();
                 return true;
             }
         } catch (Exception e) {

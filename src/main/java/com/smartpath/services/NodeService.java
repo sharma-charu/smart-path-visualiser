@@ -63,64 +63,96 @@ public class NodeService {
             return coordinates;
         }
 
-        // Build placeholders for IN clause
-        String placeholders = nodeIds.stream()
-                .map(id -> "?")
-                .collect(Collectors.joining(","));
+        // Initialize cache if needed (reusing the same logic from getNearestNode)
+        if (cachedConnectedNodes == null) {
+            getNearestNode(0, 0); // Trigger cache loading safely
+        }
 
-        String sql = "SELECT node_id, latitude, longitude FROM nodes WHERE node_id IN (" + placeholders + ")";
-
-        try (Connection conn = DBConnection.getConnection();
-                PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            // Set parameters
-            for (int i = 0; i < nodeIds.size(); i++) {
-                pstmt.setString(i + 1, nodeIds.get(i));
+        if (cachedConnectedNodes != null) {
+            // Convert cache to quick lookup map if it isn't already, but looping is fast enough for ~2000 nodes
+            // Or just do a nested loop since path is small
+            for (String id : nodeIds) {
+                for (Node n : cachedConnectedNodes) {
+                    if (n.getNodeId().equals(id)) {
+                        coordinates.put(id, new double[]{n.getLatitude(), n.getLongitude()});
+                        break;
+                    }
+                }
             }
+        }
 
-            ResultSet rs = pstmt.executeQuery();
-            while (rs.next()) {
-                String nodeId = rs.getString("node_id");
-                double lat = rs.getDouble("latitude");
-                double lon = rs.getDouble("longitude");
-                coordinates.put(nodeId, new double[] { lat, lon });
+        // Fallback for isolated nodes not in the connected cache
+        if (coordinates.size() < nodeIds.size()) {
+            List<String> missingIds = nodeIds.stream().filter(id -> !coordinates.containsKey(id)).collect(Collectors.toList());
+            if (!missingIds.isEmpty()) {
+                String placeholders = missingIds.stream().map(id -> "?").collect(Collectors.joining(","));
+                String sql = "SELECT node_id, latitude, longitude FROM nodes WHERE node_id IN (" + placeholders + ")";
+                
+                try (Connection conn = DBConnection.getConnection();
+                     PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    for (int i = 0; i < missingIds.size(); i++) {
+                        pstmt.setString(i + 1, missingIds.get(i));
+                    }
+                    ResultSet rs = pstmt.executeQuery();
+                    while (rs.next()) {
+                        coordinates.put(rs.getString("node_id"), new double[]{rs.getDouble("latitude"), rs.getDouble("longitude")});
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
-            rs.close();
-
-        } catch (Exception e) {
-            e.printStackTrace();
         }
 
         return coordinates;
     }
 
+    private static List<Node> cachedConnectedNodes = null;
+
     public static String getNearestNode(double lat, double lon) {
+        if (cachedConnectedNodes == null) {
+            cachedConnectedNodes = new ArrayList<>();
+            String sql = "SELECT DISTINCT n.node_id, n.latitude, n.longitude " +
+                    "FROM nodes n " +
+                    "JOIN roads r ON n.node_id = r.from_node OR n.node_id = r.to_node";
+            try (Connection conn = DBConnection.getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(sql);
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    cachedConnectedNodes.add(new Node(
+                            rs.getString("node_id"),
+                            rs.getDouble("latitude"),
+                            rs.getDouble("longitude")));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
         String nearestNodeId = null;
         double minDistance = Double.MAX_VALUE;
 
-        String sql = "SELECT DISTINCT n.node_id, n.latitude, n.longitude " +
-                "FROM nodes n " +
-                "JOIN roads r ON n.node_id = r.from_node OR n.node_id = r.to_node";
-        try (Connection conn = DBConnection.getConnection();
-                PreparedStatement pstmt = conn.prepareStatement(sql);
-                ResultSet rs = pstmt.executeQuery()) {
+        for (Node n : cachedConnectedNodes) {
+            double nLat = n.getLatitude();
+            double nLon = n.getLongitude();
 
-            while (rs.next()) {
-                String nodeId = rs.getString("node_id");
-                double nLat = rs.getDouble("latitude");
-                double nLon = rs.getDouble("longitude");
-
-                // Using Euclidean distance for simplicity instead of Haversine
-                double dist = Math.pow(nLat - lat, 2) + Math.pow(nLon - lon, 2);
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    nearestNodeId = nodeId;
-                }
+            // Using Euclidean distance for simplicity instead of Haversine
+            double dist = Math.pow(nLat - lat, 2) + Math.pow(nLon - lon, 2);
+            if (dist < minDistance) {
+                minDistance = dist;
+                nearestNodeId = n.getNodeId();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
 
         return nearestNodeId;
+    }
+    public static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+        final int R = 6371; // Radius of Earth in kilometers
+        double latDistance = Math.toRadians(lat2 - lat1);
+        double lonDistance = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
     }
 }

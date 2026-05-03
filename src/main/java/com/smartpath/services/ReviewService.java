@@ -36,6 +36,7 @@ public class ReviewService {
             
             if (affected > 0) {
                 recalculateRoadScores(conn, roadId);
+                RoadService.clearCache();
                 return true;
             }
         } catch (Exception e) {
@@ -87,5 +88,98 @@ public class ReviewService {
             e.printStackTrace();
         }
         return list;
+    }
+
+    public static boolean addPathReview(List<String> path, int surfaceCondition, int safetyScore, int weatherImpact, String email) {
+        Integer userId = null;
+        if (email != null && !email.isEmpty()) {
+            double trustRating = AuthService.getUserTrustRating(email);
+            if (trustRating < 2.5) {
+                return false; // Reject review data
+            }
+            userId = AuthService.getUserId(email);
+        }
+
+        try (Connection conn = DBConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            
+            // Find road_id for each pair of consecutive nodes
+            String findRoadSql = "SELECT road_id FROM roads WHERE (from_node = ? AND to_node = ?) OR (from_node = ? AND to_node = ?)";
+            PreparedStatement findRoadStmt = conn.prepareStatement(findRoadSql);
+            
+            String updateMetricsSql = "UPDATE road_metrics SET surface_condition = (surface_condition + ?)/2, safety_score = (safety_score + ?)/2, weather_impact = (weather_impact + ?)/2 WHERE road_id = ?";
+            PreparedStatement updateMetricsStmt = conn.prepareStatement(updateMetricsSql);
+            
+            for (int i = 0; i < path.size() - 1; i++) {
+                String u = path.get(i);
+                String v = path.get(i + 1);
+                
+                findRoadStmt.setString(1, u);
+                findRoadStmt.setString(2, v);
+                findRoadStmt.setString(3, v);
+                findRoadStmt.setString(4, u);
+                
+                ResultSet rs = findRoadStmt.executeQuery();
+                if (rs.next()) {
+                    int roadId = rs.getInt("road_id");
+                    
+                    updateMetricsStmt.setInt(1, surfaceCondition);
+                    updateMetricsStmt.setInt(2, safetyScore);
+                    updateMetricsStmt.setInt(3, weatherImpact);
+                    updateMetricsStmt.setInt(4, roadId);
+                    updateMetricsStmt.addBatch();
+                }
+            }
+            
+            updateMetricsStmt.executeBatch();
+            conn.commit();
+            RoadService.clearCache();
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public static boolean addEdgeReview(String fromNode, String toNode, int surfaceCondition, int safetyScore, int weatherImpact, String email) {
+        Integer userId = null;
+        if (email != null && !email.isEmpty()) {
+            double trustRating = AuthService.getUserTrustRating(email);
+            if (trustRating < 2.5) {
+                return false; // Reject review data
+            }
+            userId = AuthService.getUserId(email);
+        }
+
+        try (Connection conn = DBConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            
+            String findRoadSql = "SELECT road_id FROM roads WHERE (from_node = ? AND to_node = ?) OR (from_node = ? AND to_node = ?)";
+            PreparedStatement findRoadStmt = conn.prepareStatement(findRoadSql);
+            findRoadStmt.setString(1, fromNode);
+            findRoadStmt.setString(2, toNode);
+            findRoadStmt.setString(3, toNode);
+            findRoadStmt.setString(4, fromNode);
+            
+            ResultSet rs = findRoadStmt.executeQuery();
+            if (rs.next()) {
+                int roadId = rs.getInt("road_id");
+                
+                String updateMetricsSql = "UPDATE road_metrics SET surface_condition = (surface_condition + ?)/2, safety_score = (safety_score + ?)/2, weather_impact = (weather_impact + ?)/2 WHERE road_id = ?";
+                PreparedStatement updateMetricsStmt = conn.prepareStatement(updateMetricsSql);
+                updateMetricsStmt.setInt(1, surfaceCondition);
+                updateMetricsStmt.setInt(2, safetyScore);
+                updateMetricsStmt.setInt(3, weatherImpact);
+                updateMetricsStmt.setInt(4, roadId);
+                
+                updateMetricsStmt.executeUpdate();
+                conn.commit();
+                RoadService.clearCache();
+                return true;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 }

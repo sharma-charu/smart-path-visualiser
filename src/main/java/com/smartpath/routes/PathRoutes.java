@@ -52,8 +52,56 @@ public class PathRoutes {
             actualGraphDest = NodeService.getNearestNode(destLat, destLon);
         }
 
-        List<Map<String, Object>> paths = DijkstraService.findKShortestPaths(graph, actualGraphSource, actualGraphDest,
-                3); // Get top 3 paths
+        if (actualGraphSource == null || actualGraphDest == null) {
+            Map<String, Object> responseBody = new HashMap<>();
+            responseBody.put("paths", new ArrayList<>());
+            return gson.toJson(responseBody);
+        }
+
+        List<Map<String, Object>> paths = new ArrayList<>();
+        Map<String, Object> shortest = DijkstraService.findShortestPath(graph, actualGraphSource, actualGraphDest);
+        @SuppressWarnings("unchecked")
+        List<String> spath = (List<String>) shortest.get("path");
+        if (spath != null && !spath.isEmpty()) {
+            paths.add(shortest);
+        }
+
+        if (paths.isEmpty()) {
+            Map<String, Object> fallbackPath = new HashMap<>();
+            List<String> pathList = new ArrayList<>();
+            pathList.add(actualGraphSource);
+            if (!actualGraphSource.equals(actualGraphDest)) {
+                pathList.add(actualGraphDest);
+            }
+            
+            fallbackPath.put("path", pathList);
+            
+            double d1Lat = sourceLat != null ? sourceLat : 0;
+            double d1Lon = sourceLon != null ? sourceLon : 0;
+            double d2Lat = destLat != null ? destLat : 0;
+            double d2Lon = destLon != null ? destLon : 0;
+            
+            if (sourceLat == null || destLat == null) {
+                List<String> qNodes = new ArrayList<>();
+                qNodes.add(actualGraphSource);
+                qNodes.add(actualGraphDest);
+                Map<String, double[]> coords = NodeService.getNodeCoordinates(qNodes);
+                if (coords.containsKey(actualGraphSource)) {
+                    d1Lat = coords.get(actualGraphSource)[0];
+                    d1Lon = coords.get(actualGraphSource)[1];
+                }
+                if (coords.containsKey(actualGraphDest)) {
+                    d2Lat = coords.get(actualGraphDest)[0];
+                    d2Lon = coords.get(actualGraphDest)[1];
+                }
+            }
+            
+            fallbackPath.put("distance", NodeService.calculateDistance(d1Lat, d1Lon, d2Lat, d2Lon));
+            fallbackPath.put("time", 0);
+            fallbackPath.put("quality", 50.0);
+            fallbackPath.put("obstacles", 0);
+            paths.add(fallbackPath);
+        }
 
         // Enhance result with node coordinates for visualization
         for (Map<String, Object> pathData : paths) {

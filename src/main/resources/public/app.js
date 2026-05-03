@@ -1,5 +1,12 @@
 // Initialize Map
-const map = L.map('map', { zoomControl: false }).setView([23.2599, 77.4126], 13);
+const bhopalBounds = [[23.10, 77.30], [23.60, 77.90]];
+const map = L.map('map', { 
+    zoomControl: false,
+    maxBounds: bhopalBounds,
+    maxBoundsViscosity: 1.0,
+    minZoom: 11
+}).setView([23.2599, 77.4126], 13);
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap',
     className: 'map-tiles'
@@ -16,6 +23,7 @@ let selectedSource = null;
 let selectedDest = null;
 let currentPaths = [];
 let isLoading = true;
+let selectedReviewPath = null;
 
 // Track markers so we can remove them when they change
 let sourceMarker = null;
@@ -41,6 +49,61 @@ const pathColors = [
 ];
 
 // Fetch Data on Load
+let gpsWatchId = null;
+
+function useCurrentLocation() {
+    const btn = document.querySelector('button[onclick="useCurrentLocation()"]');
+    
+    // Toggle tracking off if already watching
+    if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+        if(btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px]">my_location</span> Use GPS';
+        return;
+    }
+
+    if ("geolocation" in navigator) {
+        if(btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px] text-green-500">my_location</span> Tracking...';
+        
+        gpsWatchId = navigator.geolocation.watchPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            const displayAddress = "Live GPS Location";
+            document.getElementById('sourceInput').value = displayAddress;
+            nodes[displayAddress] = { lat: lat, lon: lon };
+
+            if (sourceMarker) {
+                sourceMarker.setLatLng([lat, lon]);
+            } else {
+                map.setView([lat, lon], 15);
+                sourceMarker = L.marker([lat, lon], {
+                    icon: L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style='background-color:#3b82f6; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);'></div>`,
+                        iconSize: [16, 16]
+                    })
+                }).addTo(map).bindPopup("Current Location").openPopup();
+            }
+
+        }, (error) => {
+            console.warn("GPS Error: " + error.message);
+            if (error.code !== 3) { // 3 is timeout, keep trying if it's just a timeout
+                navigator.geolocation.clearWatch(gpsWatchId);
+                gpsWatchId = null;
+                if(btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px]">my_location</span> Use GPS';
+                alert("Error getting location: " + error.message);
+            }
+        }, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 5000
+        });
+    } else {
+        alert("Geolocation is not supported by your browser.");
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     // We intentionally DO NOT fetch all nodes anymore to speed up load time
     // But we do fetch roads to draw the network
@@ -232,25 +295,37 @@ async function handleAutocomplete(type) {
 
             // 2. Global Nominatim Search (Aggressive Vast Coverage)
             try {
-                // Ensure vast search space without country bounds, high limits
-                const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=15&email=contact@smartpath.com`);
+                // Restrict search space to Bhopal bounds
+                const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=15&viewbox=77.30,23.60,77.90,23.10&bounded=1&email=contact@smartpath.com`);
                 const nomData = await nomRes.json();
                 if (Array.isArray(nomData)) {
                     nomData.forEach(item => {
-                        results.push({
-                            properties: { name: item.display_name, isLocal: false },
-                            geometry: { coordinates: [parseFloat(item.lon), parseFloat(item.lat)] }
-                        });
+                        const lat = parseFloat(item.lat);
+                        const lon = parseFloat(item.lon);
+                        if (lat >= 23.10 && lat <= 23.60 && lon >= 77.30 && lon <= 77.90) {
+                            results.push({
+                                properties: { name: item.display_name, isLocal: false },
+                                geometry: { coordinates: [lon, lat] }
+                            });
+                        }
                     });
                 }
             } catch (e) { console.warn("Nominatim blocked by browser, falling back", e); }
 
             // 3. Global Photon Search (Bypass CORS/Adblocks)
             try {
-                const photonRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=15`);
+                // Restrict to Bhopal bbox
+                const photonRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=15&bbox=77.30,23.10,77.90,23.60`);
                 const photonData = await photonRes.json();
                 if (photonData.features) {
-                    results = results.concat(photonData.features);
+                    photonData.features.forEach(feature => {
+                        const coords = feature.geometry.coordinates;
+                        const lon = parseFloat(coords[0]);
+                        const lat = parseFloat(coords[1]);
+                        if (lat >= 23.10 && lat <= 23.60 && lon >= 77.30 && lon <= 77.90) {
+                            results.push(feature);
+                        }
+                    });
                 }
             } catch (e) { console.warn("Photon API down", e); }
 
@@ -424,6 +499,60 @@ function swapInputs() {
 }
 
 // Find Multiple Paths
+async function resolveCoordinate(query, nodesCache) {
+    if (nodesCache && nodesCache[query]) {
+        return { lat: nodesCache[query].lat, lon: nodesCache[query].lon };
+    }
+    
+    // 1. Try Local Search First (Instant)
+    try {
+        const localRes = await fetch(`/search/nodes?q=${encodeURIComponent(query)}`);
+        if (localRes.ok) {
+            const localData = await localRes.json();
+            if (Array.isArray(localData) && localData.length > 0) {
+                return { 
+                    lat: parseFloat(localData[0].lat || localData[0].latitude), 
+                    lon: parseFloat(localData[0].lon || localData[0].longitude) 
+                };
+            }
+        }
+    } catch (e) { console.warn("Local search failed", e); }
+
+    // 2. Fallback to Nominatim & Photon concurrently
+    try {
+        const fetchNom = fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=5&viewbox=77.30,23.60,77.90,23.10&bounded=1`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.length > 0) {
+                    for (let item of data) {
+                        const lat = parseFloat(item.lat);
+                        const lon = parseFloat(item.lon);
+                        if (lat >= 23.10 && lat <= 23.60 && lon >= 77.30 && lon <= 77.90) return {lat, lon};
+                    }
+                }
+                throw new Error("Nominatim Not found");
+            });
+            
+        const fetchPhoton = fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&bbox=77.30,23.10,77.90,23.60`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.features) {
+                    for (let feature of data.features) {
+                        const coords = feature.geometry.coordinates;
+                        const lon = parseFloat(coords[0]);
+                        const lat = parseFloat(coords[1]);
+                        if (lat >= 23.10 && lat <= 23.60 && lon >= 77.30 && lon <= 77.90) return {lat, lon};
+                    }
+                }
+                throw new Error("Photon Not found");
+            });
+
+        return await Promise.any([fetchNom, fetchPhoton]);
+    } catch (e) {
+        return null;
+    }
+}
+
 async function findAllPaths() {
     const source = document.getElementById('sourceInput').value.trim();
     const dest = document.getElementById('destInput').value.trim();
@@ -457,19 +586,30 @@ async function findAllPaths() {
     btn.classList.add('opacity-75');
 
     try {
-        let sourceLat = null;
-        let sourceLon = null;
-        let destLat = null;
-        let destLon = null;
+        // Run geocoding concurrently for source and dest using parallel execution
+        const [sourceCoords, destCoords] = await Promise.all([
+            resolveCoordinate(source, nodes),
+            resolveCoordinate(dest, nodes)
+        ]);
 
-        if (nodes[source]) {
-            sourceLat = nodes[source].lat;
-            sourceLon = nodes[source].lon;
+        if (!sourceCoords) {
+            alert('Source location not found or outside Bhopal/Vidisha boundary.');
+            btn.innerHTML = 'Find Path';
+            btn.classList.remove('opacity-75');
+            return;
         }
-        if (nodes[dest]) {
-            destLat = nodes[dest].lat;
-            destLon = nodes[dest].lon;
+
+        if (!destCoords) {
+            alert('Destination location not found or outside Bhopal/Vidisha boundary.');
+            btn.innerHTML = 'Find Path';
+            btn.classList.remove('opacity-75');
+            return;
         }
+
+        const sourceLat = sourceCoords.lat;
+        const sourceLon = sourceCoords.lon;
+        const destLat = destCoords.lat;
+        const destLon = destCoords.lon;
 
         const prefTolls = document.getElementById('pref-tolls')?.checked || false;
         const prefHighways = document.getElementById('pref-highways')?.checked || false;
@@ -477,40 +617,19 @@ async function findAllPaths() {
         const prefObstacles = document.getElementById('pref-obstacles')?.checked || false;
 
         let pathsData = [];
-        let isLocalRouting = nodes[source] && nodes[source].isLocal && nodes[dest] && nodes[dest].isLocal;
-
-        // If places are local, route through the Java Backend to read DB metrics.
-        // If they are global/vast places, route directly through OSRM bypassing local detours.
-        if (isLocalRouting) {
-            const res = await fetch('/path', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    source, destination: dest, sourceLat, sourceLon, destLat, destLon,
-                    prefTolls, prefHighways, prefQuality, prefObstacles
-                })
-            });
-            const data = await res.json();
-            pathsData = data.paths || [];
-        } else {
-            console.log("Global points detected. Routing directly via OSRM.");
-            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${sourceLon},${sourceLat};${destLon},${destLat}?overview=full&geometries=geojson&alternatives=true`;
-            const osrmRes = await fetch(osrmUrl);
-            const osrmData = await osrmRes.json();
-            
-            if (osrmData.code === 'Ok' && osrmData.routes) {
-                pathsData = osrmData.routes.map((route, idx) => ({
-                    path: [source, dest],
-                    distance: route.distance / 1000,
-                    time: Math.round(route.duration / 60), // OSRM gives duration in seconds
-                    quality: 4.0, // Default for global paths
-                    obstacles: 0,
-                    pathWithCoordinates: route.geometry.coordinates.map(c => ({latitude: c[1], longitude: c[0]})),
-                    type: idx === 0 ? 'optimal' : 'alternative',
-                    isDirectOSRM: true
-                }));
-            }
-        }
+        
+        // Always route through the Java Backend to read DB metrics and get granular edges.
+        // The backend will automatically snap Nominatim coordinates to the nearest local road nodes.
+        const res = await fetch('/path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                source, destination: dest, sourceLat, sourceLon, destLat, destLon,
+                prefTolls, prefHighways, prefQuality, prefObstacles
+            })
+        });
+        const data = await res.json();
+        pathsData = data.paths || [];
 
         if (!pathsData || pathsData.length === 0) {
             alert("No path found between these locations.");
@@ -558,46 +677,8 @@ function displayPaths() {
             let latlngs = pathData.pathWithCoordinates.map(n => [n.latitude, n.longitude]);
             let finalDistance = pathData.distance;
 
-            if (pathData.isDirectOSRM) {
-                // Geometry is already fully rendered from OSRM directly!
-                // No need to fetch it again, just use the array.
-                latlngs = pathData.pathWithCoordinates.map(n => [n.latitude, n.longitude]);
-            } else {
-                try {
-                    // Prepare coordinate string for OSRM (longitude,latitude)
-                    // Limit to 100 waypoints if needed, but usually fallback data is small.
-                    let osrmCoords = pathData.pathWithCoordinates.map(n => `${n.longitude},${n.latitude}`);
-                    
-                    // If there are too many coordinates for OSRM, we take a sample to keep it under 100
-                    if (osrmCoords.length > 100) {
-                        const sampled = [];
-                        const step = Math.ceil(osrmCoords.length / 98);
-                        for (let i = 0; i < osrmCoords.length; i += step) sampled.push(osrmCoords[i]);
-                        if (sampled[sampled.length - 1] !== osrmCoords[osrmCoords.length - 1]) {
-                            sampled.push(osrmCoords[osrmCoords.length - 1]);
-                        }
-                        osrmCoords = sampled;
-                    }
-
-                    const coordString = osrmCoords.join(';');
-                    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
-                    
-                    const osrmRes = await fetch(osrmUrl);
-                    const osrmData = await osrmRes.json();
-
-                    if (osrmData.code === 'Ok' && osrmData.routes && osrmData.routes.length > 0) {
-                        const route = osrmData.routes[0];
-                        // OSRM returns coordinates as [longitude, latitude]
-                        latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
-                        
-                        // Use OSRM's actual road distance (in meters, convert to km)
-                        finalDistance = route.distance / 1000;
-                        pathData.distance = finalDistance; 
-                    }
-                } catch(e) {
-                    console.warn("OSRM routing failed, falling back to straight lines", e);
-                }
-            }
+            // Use exactly the nodes computed by our Java Dijkstra Backend
+            latlngs = pathData.pathWithCoordinates.map(n => [n.latitude, n.longitude]);
 
             const pathLayer = L.polyline(latlngs, {
                 color: colorInfo.color,
@@ -693,6 +774,27 @@ function showPathDetails(pathData, pathIdx) {
     const colorInfo = pathColors[pathIdx];
     const detailsPanel = document.getElementById('pathDetails');
     const content = document.getElementById('pathDetailsContent');
+
+    selectedReviewPath = pathData.path;
+
+    const edgeSelect = document.getElementById('reviewPathEdge');
+    if (edgeSelect) {
+        edgeSelect.innerHTML = '<option value="">-- Select Road Segment --</option>';
+        if (pathData.path.length > 1) {
+            const sourceName = document.getElementById('sourceInput').value.trim();
+            const destName = document.getElementById('destInput').value.trim();
+            
+            for (let i = 0; i < pathData.path.length - 1; i++) {
+                const u = pathData.path[i];
+                const v = pathData.path[i+1];
+                
+                // Skip the artificial edges that just connect the search name to the first graph node
+                if (u === sourceName || v === sourceName || u === destName || v === destName) continue;
+                
+                edgeSelect.add(new Option(`Segment: ${u} → ${v}`, `${u}||${v}`));
+            }
+        }
+    }
 
     content.innerHTML = `
         <div class="space-y-4">
@@ -827,6 +929,45 @@ async function submitReview() {
     }
 }
 
+async function submitPathReview() {
+    const edgeVal = document.getElementById('reviewPathEdge').value;
+    if (!edgeVal) {
+        alert("Please select a road segment from the dropdown to review.");
+        return;
+    }
+    const [fromNode, toNode] = edgeVal.split('||');
+    
+    const surface = parseInt(document.getElementById('slider-surface').value, 10);
+    const safety = parseInt(document.getElementById('slider-safety').value, 10);
+    const weather = parseInt(document.getElementById('slider-weather').value, 10);
+    const email = localStorage.getItem('userEmail');
+
+    try {
+        const res = await fetch('/edge-review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fromNode: fromNode,
+                toNode: toNode,
+                surface: surface,
+                safety: safety,
+                weather: weather,
+                email: email
+            })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert("✅ " + data.message);
+        } else {
+            alert("❌ " + (data.message || "Failed to submit path review."));
+        }
+    } catch (e) {
+        console.error(e);
+        alert("❌ Failed to submit path review.");
+    }
+}
+
 // Slider logic
 function updateSliderValue(sliderType) {
     const val = document.getElementById('slider-' + sliderType).value;
@@ -838,7 +979,6 @@ function updateSliderValue(sliderType) {
 // AI Rules Implementation
 function analyzeRoadConditions() {
     const surface = parseInt(document.getElementById('slider-surface').value, 10);
-    const traffic = parseInt(document.getElementById('slider-traffic').value, 10);
     const safety = parseInt(document.getElementById('slider-safety').value, 10);
     const weather = parseInt(document.getElementById('slider-weather').value, 10);
 
@@ -850,9 +990,6 @@ function analyzeRoadConditions() {
     // Analyze conditions based on provided prompt rules
     if (surface < 40) {
         alerts.push({ type: 'Poor Road Condition Alert', desc: 'Low surface quality detected', severity: 'High', color: 'red' });
-    }
-    if (traffic > 70) {
-        alerts.push({ type: 'Heavy Traffic Alert', desc: 'High traffic density detected', severity: 'Medium', color: 'amber' });
     }
     if (safety < 50) {
         alerts.push({ type: 'Unsafe Route Warning', desc: 'Low safety score detected', severity: 'High', color: 'red' });

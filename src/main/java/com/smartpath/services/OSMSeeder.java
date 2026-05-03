@@ -18,11 +18,11 @@ import java.util.Map;
 
 public class OSMSeeder {
     
-    // Bhopal bounding box coordinates
-    private static final double MIN_LAT = 23.18;
-    private static final double MIN_LON = 77.35;
-    private static final double MAX_LAT = 23.32;
-    private static final double MAX_LON = 77.50;
+    // Bhopal and Vidisha bounding box coordinates
+    private static final double MIN_LAT = 23.10;
+    private static final double MIN_LON = 77.30;
+    private static final double MAX_LAT = 23.60;
+    private static final double MAX_LON = 77.90;
     
     public static void seedFromOSM() {
         System.out.println("Starting OSM data seeding...");
@@ -162,11 +162,35 @@ public class OSMSeeder {
                 "VALUES (?, ?, ?, ?, ?, ?)"
             );
             
+            Map<String, Integer> edgeSurfaces = new HashMap<>();
+            
             for (JsonElement elem : elements) {
                 JsonObject obj = elem.getAsJsonObject();
                 String type = obj.get("type").getAsString();
                 
                 if ("way".equals(type) && obj.has("nodes")) {
+                    int baseSurfaceScore = 50; // Default fallback
+                    
+                    if (obj.has("tags")) {
+                        JsonObject tags = obj.getAsJsonObject("tags");
+                        
+                        // 1. Check direct surface tag
+                        if (tags.has("surface")) {
+                            String surface = tags.get("surface").getAsString();
+                            if (surface.matches("asphalt|concrete|paved")) baseSurfaceScore = 85;
+                            else if (surface.matches("unpaved|dirt|gravel|sand")) baseSurfaceScore = 30;
+                            else if (surface.matches("cobblestone|compacted|paving_stones")) baseSurfaceScore = 60;
+                        } 
+                        // 2. Fallback to highway type inference
+                        else if (tags.has("highway")) {
+                            String highway = tags.get("highway").getAsString();
+                            if (highway.matches("motorway|trunk|primary|motorway_link|trunk_link|primary_link")) baseSurfaceScore = 90;
+                            else if (highway.matches("secondary|tertiary|secondary_link|tertiary_link")) baseSurfaceScore = 75;
+                            else if (highway.matches("residential|unclassified")) baseSurfaceScore = 60;
+                            else if (highway.matches("track|service")) baseSurfaceScore = 35;
+                        }
+                    }
+
                     JsonArray wayNodes = obj.getAsJsonArray("nodes");
                     
                     // Create edges between consecutive nodes
@@ -186,6 +210,7 @@ public class OSMSeeder {
                             roadStmt.setDouble(3, distance);
                             roadStmt.addBatch();
                             
+                            edgeSurfaces.put(fromId + "-" + toId, baseSurfaceScore);
                             roadCount++;
                         }
                     }
@@ -194,14 +219,19 @@ public class OSMSeeder {
             
             roadStmt.executeBatch();
             
-            // Initialize metrics for all roads with default values
-            PreparedStatement getRoadsStmt = conn.prepareStatement("SELECT road_id FROM roads");
+            // Initialize metrics for all roads with calculated surface scores
+            PreparedStatement getRoadsStmt = conn.prepareStatement("SELECT road_id, from_node, to_node FROM roads");
             ResultSet rs = getRoadsStmt.executeQuery();
             
             while (rs.next()) {
                 int roadId = rs.getInt("road_id");
+                String fromNode = rs.getString("from_node");
+                String toNode = rs.getString("to_node");
+                
+                int surfaceScore = edgeSurfaces.getOrDefault(fromNode + "-" + toNode, 50);
+
                 metricsStmt.setInt(1, roadId);
-                metricsStmt.setInt(2, 50); // surface_condition
+                metricsStmt.setInt(2, surfaceScore); // surface_condition
                 metricsStmt.setInt(3, 50); // traffic_density
                 metricsStmt.setInt(4, 50); // safety_score
                 metricsStmt.setInt(5, 50); // weather_impact

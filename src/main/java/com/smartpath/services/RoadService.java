@@ -14,7 +14,18 @@ import java.util.Map;
 
 public class RoadService {
 
+    private static Map<String, Map<String, List<Edge>>> graphCache = new HashMap<>();
+
+    public static void clearCache() {
+        graphCache.clear();
+    }
+
     public static Map<String, List<Edge>> buildGraph(boolean avoidTolls, boolean avoidHighways, boolean prefQuality, boolean prefObstacles) {
+        String cacheKey = avoidTolls + "-" + avoidHighways + "-" + prefQuality + "-" + prefObstacles;
+        if (graphCache.containsKey(cacheKey)) {
+            return graphCache.get(cacheKey);
+        }
+
         Map<String, List<Edge>> graph = new HashMap<>();
 
         String sql = "SELECT r.from_node, r.to_node, r.distance, " +
@@ -58,8 +69,11 @@ public class RoadService {
                 // Average penalty factor from the 4 metrics combined
                 double combinedPenalty = (surfacePenalty + trafficPenalty + safetyPenalty + weatherPenalty) / 4.0;
                 
-                // Weight formula: distance as base, adjusted dynamically by qualities
-                double weight = distance * (1.0 + combinedPenalty);
+                // Weight formula: distance as base, adjusted dynamically by qualities ONLY if requested
+                double weight = distance;
+                if (prefQuality) {
+                    weight += distance * combinedPenalty;
+                }
                 
                 if (avoidHighways && isHighway) {
                     weight += 50.0;
@@ -80,6 +94,8 @@ public class RoadService {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        
+        graphCache.put(cacheKey, graph);
         return graph;
     }
 
